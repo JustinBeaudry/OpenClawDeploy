@@ -411,13 +411,7 @@
                                                     icon={Icons.Server}
                                                     color={metrics.status === 'RUNNING' ? 'green' : 'slate'}
                                                 />
-                                                <MetricsCard 
-                                                    label="Machine Type" 
-                                                    value={metrics.machineType} 
-                                                    subtext="vCPU / Memory depends on type"
-                                                    icon={Icons.Cpu}
-                                                    color="purple"
-                                                />
+                                                <p className="text-lg text-white mt-1">t2a-standard-2 (ARM)</p>
                                                 <MetricsCard 
                                                     label="Network (Tailscale)" 
                                                     value="100.x.y.z" 

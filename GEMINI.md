@@ -38,7 +38,7 @@ To apply code updates or configuration changes to an existing VM:
 The `manage_deployment.sh` script respects the following variables:
 *   `GCP_PROJECT_ID` (Default: `gcloud config` default)
 *   `GCP_ZONE` (Default: `us-east5-a`)
-*   `GCP_MACHINE_TYPE` (Default: `e2-medium`)
+*   `GCP_MACHINE_TYPE` (Default: `t2a-standard-2`)
 *   `GCP_DISK_SIZE` (Default: `50GB`)
 
 ### Ansible Variables (`vars.yml`)

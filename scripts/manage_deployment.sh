@@ -5,7 +5,7 @@ set -e
 DEPLOYMENTS_DIR="deployments"
 PROJECT_ID="${GCP_PROJECT_ID:-$(gcloud config get-value project)}"
 ZONE="${GCP_ZONE:-us-east5-a}"
-MACHINE_TYPE="${GCP_MACHINE_TYPE:-e2-medium}"
+MACHINE_TYPE="${GCP_MACHINE_TYPE:-t2a-standard-2}"
 DISK_SIZE="${GCP_DISK_SIZE:-50GB}"
 IMAGE_FAMILY="ubuntu-2204-lts"
 IMAGE_PROJECT="ubuntu-os-cloud"

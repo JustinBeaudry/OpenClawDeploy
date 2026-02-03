@@ -1,0 +1,126 @@
+{
+  "meta": {
+    "templateVersion": "1.0.0",
+    "source": "shodan-checkpoint"
+  },
+  "env": {
+    "vars": {
+      "GOOGLE_CLIENT_ID": "",
+      "GOOGLE_CLIENT_SECRET": "",
+      "SLACK_BOT_TOKEN": "",
+      "SLACK_APP_TOKEN": ""
+    }
+  },
+  "browser": {
+    "enabled": true,
+    "headless": true
+  },
+  "auth": {
+    "profiles": {}
+  },
+  "models": {
+    "providers": {
+      "deepinfra": {
+        "baseUrl": "https://api.deepinfra.com/v1/openai",
+        "apiKey": "",
+        "auth": "api-key",
+        "api": "openai-completions",
+        "models": [
+          {
+            "id": "Qwen/Qwen3-Coder-480B-A35B-Instruct-Turbo",
+            "name": "Qwen3 Coder 480B Turbo",
+            "reasoning": false,
+            "input": ["text"],
+            "contextWindow": 32768,
+            "maxTokens": 4096
+          }
+        ]
+      }
+    }
+  },
+  "agents": {
+    "defaults": {
+      "model": {
+        "primary": "google-gemini-cli/gemini-3-pro-preview",
+        "fallbacks": ["deepinfra/Qwen/Qwen3-Coder-480B-A35B-Instruct-Turbo"]
+      },
+      "models": {
+        "google-gemini-cli/gemini-3-pro-preview": {}
+      },
+      "workspace": "/home/clawdbot/clawd",
+      "compaction": {
+        "mode": "safeguard"
+      },
+      "heartbeat": {
+        "every": "15m"
+      }
+    }
+  },
+  "tools": {
+    "web": {
+      "search": {
+        "enabled": true,
+        "provider": "brave",
+        "apiKey": ""
+      }
+    }
+  },
+  "messages": {
+    "ackReactionScope": "group-mentions"
+  },
+  "commands": {
+    "native": "auto",
+    "nativeSkills": "auto",
+    "restart": true
+  },
+  "channels": {
+    "signal": {
+      "enabled": true,
+      "httpUrl": "http://127.0.0.1:8080",
+      "autoStart": false,
+      "dmPolicy": "pairing",
+      "groupPolicy": "allowlist"
+    }
+  },
+  "gateway": {
+    "port": 18789,
+    "mode": "local",
+    "bind": "tailnet",
+    "auth": {
+      "mode": "token",
+      "token": "" 
+    },
+    "tailscale": {
+      "mode": "off",
+      "resetOnExit": false
+    }
+  },
+  "skills": {
+    "install": {
+      "nodeManager": "npm"
+    },
+    "entries": {
+      "local-places": {
+        "apiKey": ""
+      },
+      "nano-banana-pro": {
+        "apiKey": ""
+      },
+      "openai-image-gen": {
+        "apiKey": ""
+      },
+      "openai-whisper-api": {
+        "apiKey": ""
+      }
+    }
+  },
+  "plugins": {
+    "entries": {
+      "google-gemini-cli-auth": { "enabled": true },
+      "discord": { "enabled": true },
+      "google-antigravity-auth": { "enabled": true },
+      "slack": { "enabled": false },
+      "signal": { "enabled": true }
+    }
+  }
+}

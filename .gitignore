@@ -1,0 +1,6 @@
+# Deployment configurations
+deployments/
+
+# Temp files
+*.log
+.DS_Store

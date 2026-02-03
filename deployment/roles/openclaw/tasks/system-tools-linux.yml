@@ -1,0 +1,118 @@
+---
+# Linux-specific system tools installation (apt-based)
+
+- name: Install essential system tools (Linux - apt)
+  ansible.builtin.apt:
+    name:
+      # Shells
+      - zsh
+      # Editors
+      - vim
+      - nano
+      # Version control
+      - git
+      - git-lfs
+      # Network tools
+      - curl
+      - wget
+      - netcat-openbsd
+      - net-tools
+      - dnsutils
+      - iputils-ping
+      - traceroute
+      - tcpdump
+      - nmap
+      - socat
+      - telnet
+      # Debugging tools
+      - strace
+      - lsof
+      - gdb
+      - htop
+      - iotop
+      - iftop
+      - sysstat
+      - procps
+      # System utilities
+      - tmux
+      - tree
+      - jq
+      - unzip
+      - rsync
+      - less
+      # Build essentials for Homebrew on Linux
+      - build-essential
+      - file
+    state: present
+    update_cache: true
+
+- name: Set zsh as default shell for openclaw user (Linux)
+  ansible.builtin.user:
+    name: "{{ openclaw_user }}"
+    shell: /usr/bin/zsh
+
+- name: Deploy global vim configuration (Linux)
+  ansible.builtin.template:
+    src: vimrc.j2
+    dest: /etc/vim/vimrc.local
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Configure .bashrc for openclaw user (Linux)
+  ansible.builtin.blockinfile:
+    path: "{{ openclaw_home }}/.bashrc"
+    marker: "# {mark} ANSIBLE MANAGED BLOCK - OpenClaw config"
+    block: |
+      # Enable 256 colors
+      export TERM=xterm-256color
+      export COLORTERM=truecolor
+
+      # Add Homebrew to PATH (Linux)
+      eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+
+      # Add pnpm to PATH
+      export PNPM_HOME="{{ openclaw_home }}/.local/share/pnpm"
+      export PATH="{{ openclaw_home }}/.local/bin:$PNPM_HOME:$PATH"
+
+      # Color support for common tools
+      export CLICOLOR=1
+      export LS_COLORS='di=34:ln=35:so=32:pi=33:ex=31:bd=34;46:cd=34;43:su=30;41:sg=30;46:tw=30;42:ow=30;43'
+
+      # Aliases
+      alias ls='ls --color=auto'
+      alias grep='grep --color=auto'
+      alias ll='ls -lah'
+    create: true
+    owner: "{{ openclaw_user }}"
+    group: "{{ openclaw_user }}"
+    mode: '0644'
+
+- name: Configure .zshrc for openclaw user (Linux)
+  ansible.builtin.blockinfile:
+    path: "{{ openclaw_home }}/.zshrc"
+    marker: "# {mark} ANSIBLE MANAGED BLOCK - OpenClaw config"
+    block: |
+      # Enable 256 colors
+      export TERM=xterm-256color
+      export COLORTERM=truecolor
+
+      # Add Homebrew to PATH (Linux)
+      eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+
+      # Add pnpm to PATH
+      export PNPM_HOME="{{ openclaw_home }}/.local/share/pnpm"
+      export PATH="{{ openclaw_home }}/.local/bin:$PNPM_HOME:$PATH"
+
+      # Color support for common tools
+      export CLICOLOR=1
+      export LS_COLORS='di=34:ln=35:so=32:pi=33:ex=31:bd=34;46:cd=34;43:su=30;41:sg=30;46:tw=30;42:ow=30;43'
+
+      # Aliases
+      alias ls='ls --color=auto'
+      alias grep='grep --color=auto'
+      alias ll='ls -lah'
+    create: true
+    owner: "{{ openclaw_user }}"
+    group: "{{ openclaw_user }}"
+    mode: '0644'

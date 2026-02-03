@@ -23,7 +23,7 @@ You can configure the deployment using the following environment variables.
 | :--- | :--- | :--- |
 | `GCP_PROJECT_ID` | `(gcloud config default)` | **Required.** The ID of your Google Cloud project. |
 | `GCP_ZONE` | `us-east5-a` | The GCP zone to deploy the VM in. |
-| `GCP_MACHINE_TYPE` | `e2-medium` | The machine type (CPU/RAM). See [Cost Estimates](#cost-estimates). |
+| `GCP_MACHINE_TYPE` | `t2a-standard-2` | The machine type (CPU/RAM). See [Cost Estimates](#cost-estimates). |
 | `GCP_DISK_SIZE` | `50GB` | The size of the boot disk. |
 
 ## Parallel Development
@@ -126,14 +126,14 @@ To customize a specific deployment (e.g., to add a Tailscale auth key), edit `de
 
 ## Cost Estimates
 
-The default configuration uses an **e2-medium** instance in a US region.
+The default configuration uses a **t2a-standard-2** instance (ARM) in a US region.
 
 | Resource | Specification | Est. Monthly Cost (USD) |
 | :--- | :--- | :--- |
-| **Compute** | e2-medium (2 vCPU, 4GB RAM) | ~$25.00 |
+| **Compute** | t2a-standard-2 (2 vCPU, 8GB RAM ARM) | ~$56.00 |
 | **Storage** | 50GB Standard Persistent Disk | ~$2.00 |
 | **Network** | Egress (varies by usage) | ~$0.00 - $10.00+ |
-| **Total** | | **~$27.00 / month** |
+| **Total** | | **~$58.00 / month** |
 
 *Note: Costs are estimates and vary by region and usage. E2 instances may offer sustained use discounts.*
 

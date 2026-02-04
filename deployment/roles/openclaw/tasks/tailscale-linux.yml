@@ -1,6 +1,13 @@
 ---
 # Linux-specific Tailscale installation (Debian/Ubuntu)
 
+- name: Validate distribution for Tailscale installation
+  ansible.builtin.assert:
+    that:
+      - ansible_distribution | lower in ['debian', 'ubuntu']
+    fail_msg: "Tailscale installation only supports Debian and Ubuntu, got: {{ ansible_distribution }}"
+    success_msg: "Distribution validated: {{ ansible_distribution }}"
+
 - name: Add Tailscale GPG key
   ansible.builtin.shell:
     cmd: |
@@ -61,8 +68,11 @@
   when: tailscale_status_linux.rc != 0 and (tailscale_authkey is not defined or tailscale_authkey | length == 0)
 
 - name: Authenticate Tailscale (if auth key provided)
-  ansible.builtin.command:
-    cmd: "tailscale up --authkey {{ tailscale_authkey }}"
+  ansible.builtin.shell:
+    cmd: 'tailscale up --authkey="$TAILSCALE_AUTHKEY"'
+    executable: /bin/bash
+  environment:
+    TAILSCALE_AUTHKEY: "{{ tailscale_authkey }}"
   when:
     - tailscale_status_linux.rc != 0
     - tailscale_authkey is defined

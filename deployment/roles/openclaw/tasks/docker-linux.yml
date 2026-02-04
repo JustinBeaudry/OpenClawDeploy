@@ -1,6 +1,13 @@
 ---
 # Linux-specific Docker installation (apt-based)
 
+- name: Validate distribution for Docker installation
+  ansible.builtin.assert:
+    that:
+      - ansible_distribution | lower in ['debian', 'ubuntu']
+    fail_msg: "Docker installation only supports Debian and Ubuntu, got: {{ ansible_distribution }}"
+    success_msg: "Distribution validated: {{ ansible_distribution }}"
+
 - name: Install required system packages for Docker
   ansible.builtin.apt:
     name:
@@ -64,6 +71,9 @@
     name: "{{ openclaw_user }}"
     groups: docker
     append: true
+  # NOTE: Docker group membership provides root-equivalent access to the Docker daemon.
+  # This is required for OpenClaw to manage sandboxed containers.
+  # Alternative (rootless Docker) is more secure but more complex to configure.
 
 - name: Reset SSH connection to apply docker group
   ansible.builtin.meta: reset_connection

@@ -17,7 +17,7 @@ if [ $PLAYBOOK_EXIT -eq 0 ]; then
     echo "✅ INSTALLATION COMPLETE!"
     echo "═══════════════════════════════════════════════════════════"
     echo ""
-    echo "🔄 SWITCH TO CLAWDBOT USER with:"
+    echo "🔄 SWITCH TO OPENCLAW USER with:"
     echo ""
     echo "    sudo su - openclaw"
     echo ""

@@ -13,13 +13,21 @@ PROJECT_ID="${GCP_PROJECT_ID:-}"
 ZONE="${GCP_ZONE:-us-central1-a}"
 MACHINE_TYPE="${GCP_MACHINE_TYPE:-t2a-standard-2}"
 DISK_SIZE="${GCP_DISK_SIZE:-50GB}"
+DISK_TYPE="${GCP_DISK_TYPE:-pd-ssd}"
 IMAGE_FAMILY="ubuntu-2204-lts"
 IMAGE_PROJECT="ubuntu-os-cloud"
+
+# Network & Security Configuration
+VPC_NAME="openclaw-vpc"
+SUBNET_NAME="openclaw-subnet"
+SUBNET_RANGE="10.0.0.0/24"
+SERVICE_ACCOUNT_NAME="openclaw-sa"
 
 # CLI Options (can override defaults)
 CLI_ZONE=""
 CLI_MACHINE_TYPE=""
 CLI_DISK_SIZE=""
+CLI_DISK_TYPE=""
 CLI_TAILSCALE_KEY=""
 CLI_INSTALL_MODE=""
 DRY_RUN=false
@@ -40,6 +48,158 @@ log_verbose() {
     fi
 }
 
+# Derive region from zone (us-central1-a -> us-central1)
+get_region() {
+    echo "${ZONE%-*}"
+}
+
+# Setup custom VPC with subnet for network isolation
+setup_vpc() {
+    local REGION=$(get_region)
+
+    log_msg "🌐 Setting up isolated VPC network..."
+
+    # Create custom VPC (if not exists)
+    if ! gcloud compute networks describe "$VPC_NAME" --project="$PROJECT_ID" &>/dev/null; then
+        log_msg "   Creating VPC: $VPC_NAME..."
+        gcloud compute networks create "$VPC_NAME" \
+            --project="$PROJECT_ID" \
+            --subnet-mode=custom
+    else
+        log_verbose "VPC $VPC_NAME already exists"
+    fi
+
+    # Create subnet (if not exists)
+    if ! gcloud compute networks subnets describe "$SUBNET_NAME" --region="$REGION" --project="$PROJECT_ID" &>/dev/null; then
+        log_msg "   Creating subnet: $SUBNET_NAME ($SUBNET_RANGE)..."
+        gcloud compute networks subnets create "$SUBNET_NAME" \
+            --project="$PROJECT_ID" \
+            --network="$VPC_NAME" \
+            --region="$REGION" \
+            --range="$SUBNET_RANGE"
+    else
+        log_verbose "Subnet $SUBNET_NAME already exists"
+    fi
+
+    log_msg "✅ VPC network ready"
+}
+
+# Setup network infrastructure for private VMs (Cloud NAT + IAP firewall)
+setup_network_infrastructure() {
+    local REGION=$(get_region)
+
+    log_msg "🔒 Setting up network infrastructure for private VM access..."
+
+    # Create Cloud Router (if not exists)
+    if ! gcloud compute routers describe openclaw-router --region="$REGION" --project="$PROJECT_ID" &>/dev/null; then
+        log_msg "   Creating Cloud Router..."
+        gcloud compute routers create openclaw-router \
+            --project="$PROJECT_ID" \
+            --region="$REGION" \
+            --network="$VPC_NAME"
+    else
+        log_verbose "Cloud Router already exists"
+    fi
+
+    # Create Cloud NAT (if not exists)
+    if ! gcloud compute routers nats describe openclaw-nat --router=openclaw-router --region="$REGION" --project="$PROJECT_ID" &>/dev/null; then
+        log_msg "   Creating Cloud NAT for outbound connectivity..."
+        gcloud compute routers nats create openclaw-nat \
+            --project="$PROJECT_ID" \
+            --router=openclaw-router \
+            --region="$REGION" \
+            --auto-allocate-nat-external-ips \
+            --nat-all-subnet-ip-ranges
+    else
+        log_verbose "Cloud NAT already exists"
+    fi
+
+    # Create IAP firewall rule (if not exists)
+    if ! gcloud compute firewall-rules describe allow-iap-ssh-$VPC_NAME --project="$PROJECT_ID" &>/dev/null; then
+        log_msg "   Creating IAP SSH firewall rule..."
+        gcloud compute firewall-rules create allow-iap-ssh-$VPC_NAME \
+            --project="$PROJECT_ID" \
+            --direction=INGRESS \
+            --priority=1000 \
+            --network="$VPC_NAME" \
+            --action=ALLOW \
+            --rules=tcp:22 \
+            --source-ranges=35.235.240.0/20
+    else
+        log_verbose "IAP firewall rule already exists"
+    fi
+
+    log_msg "✅ Network infrastructure ready"
+}
+
+# Setup dedicated service account with minimal permissions
+setup_service_account() {
+    local SA_EMAIL="$SERVICE_ACCOUNT_NAME@$PROJECT_ID.iam.gserviceaccount.com"
+
+    log_msg "👤 Setting up dedicated service account..."
+
+    # Create service account (if not exists)
+    if ! gcloud iam service-accounts describe "$SA_EMAIL" --project="$PROJECT_ID" &>/dev/null; then
+        log_msg "   Creating service account: $SERVICE_ACCOUNT_NAME..."
+        gcloud iam service-accounts create "$SERVICE_ACCOUNT_NAME" \
+            --project="$PROJECT_ID" \
+            --display-name="OpenClaw VM Service Account"
+
+        # Grant minimal permissions
+        log_msg "   Granting logging.logWriter role..."
+        gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+            --member="serviceAccount:$SA_EMAIL" \
+            --role="roles/logging.logWriter" \
+            --quiet
+
+        log_msg "   Granting monitoring.metricWriter role..."
+        gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+            --member="serviceAccount:$SA_EMAIL" \
+            --role="roles/monitoring.metricWriter" \
+            --quiet
+    else
+        log_verbose "Service account $SERVICE_ACCOUNT_NAME already exists"
+    fi
+
+    log_msg "✅ Service account ready: $SA_EMAIL"
+}
+
+# Configure SSH for IAP tunnel access
+configure_ssh_for_iap() {
+    local HOST_ALIAS="$1"
+    local SSH_CONFIG="$HOME/.ssh/config"
+    local SSH_CONFIG_DIR="$HOME/.ssh"
+
+    log_msg "🔑 Configuring SSH for IAP tunnel access..."
+
+    # Ensure .ssh directory exists
+    mkdir -p "$SSH_CONFIG_DIR"
+    chmod 700 "$SSH_CONFIG_DIR"
+
+    # Remove existing entry if present
+    if [ -f "$SSH_CONFIG" ]; then
+        # Create temp file without the old entry
+        sed -i.bak "/^Host $HOST_ALIAS$/,/^Host /{ /^Host $HOST_ALIAS$/d; /^Host /!d; }" "$SSH_CONFIG"
+        # Clean up any empty lines at end
+        sed -i.bak -e :a -e '/^\s*$/d;N;ba' "$SSH_CONFIG" 2>/dev/null || true
+        rm -f "$SSH_CONFIG.bak"
+    fi
+
+    # Append new IAP-based SSH config
+    cat >> "$SSH_CONFIG" <<EOF
+
+# OpenClaw VM - IAP Tunnel (auto-generated)
+Host $HOST_ALIAS
+    HostName compute.$VM_NAME
+    ProxyCommand gcloud compute start-iap-tunnel $VM_NAME %p --listen-on-stdin --project=$PROJECT_ID --zone=$ZONE
+    StrictHostKeyChecking no
+    UserKnownHostsFile /dev/null
+EOF
+
+    chmod 600 "$SSH_CONFIG"
+    log_msg "✅ SSH configured for: $HOST_ALIAS"
+}
+
 usage() {
     cat << EOF
 Usage: $0 [OPTIONS] {create|update} <vm_name>
@@ -52,6 +212,7 @@ Options:
   --zone ZONE              GCP zone (default: $ZONE)
   --machine-type TYPE      Machine type (default: $MACHINE_TYPE)
   --disk-size SIZE         Boot disk size (default: $DISK_SIZE)
+  --disk-type TYPE         Boot disk type: pd-ssd or pd-standard (default: $DISK_TYPE)
   --tailscale-key KEY      Tailscale auth key for auto-connect
   --install-mode MODE      Installation mode: release or development (default: release)
   --dry-run                Show what would be done without making changes
@@ -64,6 +225,7 @@ Environment Variables:
   GCP_ZONE                 Default zone (overridden by --zone)
   GCP_MACHINE_TYPE         Default machine type (overridden by --machine-type)
   GCP_DISK_SIZE            Default disk size (overridden by --disk-size)
+  GCP_DISK_TYPE            Default disk type (overridden by --disk-type)
 
 Examples:
   # Create a new deployment with defaults
@@ -103,6 +265,14 @@ parse_args() {
                 ;;
             --disk-size)
                 CLI_DISK_SIZE="$2"
+                shift 2
+                ;;
+            --disk-type)
+                CLI_DISK_TYPE="$2"
+                if [[ "$CLI_DISK_TYPE" != "pd-ssd" && "$CLI_DISK_TYPE" != "pd-standard" ]]; then
+                    echo "❌ Error: --disk-type must be 'pd-ssd' or 'pd-standard'"
+                    exit 1
+                fi
                 shift 2
                 ;;
             --tailscale-key)
@@ -156,6 +326,7 @@ parse_args() {
     [ -n "$CLI_ZONE" ] && ZONE="$CLI_ZONE"
     [ -n "$CLI_MACHINE_TYPE" ] && MACHINE_TYPE="$CLI_MACHINE_TYPE"
     [ -n "$CLI_DISK_SIZE" ] && DISK_SIZE="$CLI_DISK_SIZE"
+    [ -n "$CLI_DISK_TYPE" ] && DISK_TYPE="$CLI_DISK_TYPE"
 
     # Get project ID (must be set)
     if [ -z "$PROJECT_ID" ]; then
@@ -202,7 +373,8 @@ show_config() {
     echo "  Project:       $PROJECT_ID"
     echo "  Zone:          $ZONE"
     echo "  Machine Type:  $MACHINE_TYPE"
-    echo "  Disk Size:     $DISK_SIZE"
+    echo "  Disk:          $DISK_SIZE ($DISK_TYPE)"
+    echo "  Network:       $VPC_NAME / $SUBNET_NAME"
     echo "  Image:         $IMAGE_FAMILY ($IMAGE_PROJECT)"
     [ -n "$CLI_INSTALL_MODE" ] && echo "  Install Mode:  $CLI_INSTALL_MODE"
     [ -n "$CLI_TAILSCALE_KEY" ] && echo "  Tailscale:     (key provided)"
@@ -251,7 +423,11 @@ create_vm() {
     fi
 
     if [ "$DRY_RUN" = true ]; then
+        local SA_EMAIL="$SERVICE_ACCOUNT_NAME@$PROJECT_ID.iam.gserviceaccount.com"
         echo "[DRY RUN] Would create directory: $INVENTORY_DIR"
+        echo "[DRY RUN] Would setup VPC: $VPC_NAME with subnet $SUBNET_NAME ($SUBNET_RANGE)"
+        echo "[DRY RUN] Would setup service account: $SA_EMAIL (logging + monitoring only)"
+        echo "[DRY RUN] Would setup network infrastructure (Cloud Router, NAT, IAP firewall)"
         echo "[DRY RUN] Would execute: gcloud compute instances create $VM_NAME \\"
         echo "            --project=$PROJECT_ID \\"
         echo "            --zone=$ZONE \\"
@@ -259,16 +435,33 @@ create_vm() {
         echo "            --image-family=$IMAGE_FAMILY \\"
         echo "            --image-project=$IMAGE_PROJECT \\"
         echo "            --boot-disk-size=$DISK_SIZE \\"
-        echo "            --tags=http-server,https-server \\"
+        echo "            --boot-disk-type=$DISK_TYPE \\"
+        echo "            --network=$VPC_NAME \\"
+        echo "            --subnet=$SUBNET_NAME \\"
+        echo "            --no-address \\"
+        echo "            --service-account=$SA_EMAIL \\"
+        echo "            --scopes=logging-write,monitoring-write \\"
         echo "            --metadata=enable-oslogin=TRUE"
+        echo "[DRY RUN] Would configure SSH for IAP tunnel access"
         echo "[DRY RUN] Would generate $INVENTORY_FILE and $VARS_FILE"
         return
     fi
 
     mkdir -p "$INVENTORY_DIR"
 
+    local SA_EMAIL="$SERVICE_ACCOUNT_NAME@$PROJECT_ID.iam.gserviceaccount.com"
+
+    # Setup isolated VPC network
+    setup_vpc
+
+    # Setup dedicated service account with minimal permissions
+    setup_service_account
+
+    # Setup network infrastructure (Cloud NAT for egress, IAP for SSH)
+    setup_network_infrastructure
+
     log_msg "🚀 Creating VM '$VM_NAME' in project '$PROJECT_ID' (Zone: $ZONE)..."
-    log_verbose "Machine type: $MACHINE_TYPE, Disk: $DISK_SIZE"
+    log_verbose "Machine type: $MACHINE_TYPE, Disk: $DISK_SIZE ($DISK_TYPE)"
 
     gcloud compute instances create "$VM_NAME" \
         --project="$PROJECT_ID" \
@@ -277,20 +470,21 @@ create_vm() {
         --image-family="$IMAGE_FAMILY" \
         --image-project="$IMAGE_PROJECT" \
         --boot-disk-size="$DISK_SIZE" \
-        --tags=http-server,https-server \
+        --boot-disk-type="$DISK_TYPE" \
+        --network="$VPC_NAME" \
+        --subnet="$SUBNET_NAME" \
+        --no-address \
+        --service-account="$SA_EMAIL" \
+        --scopes=logging-write,monitoring-write \
         --metadata=enable-oslogin=TRUE
 
     log_msg "⏳ Waiting for VM to initialize..."
     sleep 20
 
-    # Get IP address
-    log_msg "Fetching VM IP address..."
-    IP=$(gcloud compute instances describe "$VM_NAME" --zone="$ZONE" --format='get(networkInterfaces[0].accessConfigs[0].natIP)')
-    log_msg "✅ VM Created. Public IP: $IP"
+    log_msg "✅ VM Created (private IP only - no public exposure)"
 
-    # Configure SSH
-    log_msg "🔑 Updating local SSH configuration via gcloud..."
-    gcloud compute config-ssh --project="$PROJECT_ID" --quiet
+    # Configure SSH for IAP tunnel
+    configure_ssh_for_iap "$HOST_ALIAS"
 
     # Create Inventory File
     log_msg "📝 Generating inventory file: $INVENTORY_FILE"
@@ -484,9 +678,8 @@ main() {
             fi
 
             if [ "$DRY_RUN" != true ]; then
-                # Refresh SSH config in case IP changed
-                log_msg "🔑 Refreshing SSH configuration..."
-                gcloud compute config-ssh --project="$PROJECT_ID" --quiet
+                # Ensure SSH config is set for IAP tunnel
+                configure_ssh_for_iap "$HOST_ALIAS"
             fi
             run_ansible
             ;;

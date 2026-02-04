@@ -18,7 +18,7 @@
 
 - [Google Cloud SDK (`gcloud`)](https://cloud.google.com/sdk/docs/install) installed and authenticated
 - [Ansible 2.14+](https://docs.ansible.com/ansible/latest/installation_guide/intro_installation.html) installed locally
-- A GCP Project with Compute Engine API enabled
+- A GCP Project with Compute Engine API and IAP API enabled
 
 **Verify your setup:**
 
@@ -33,11 +33,14 @@
 gcloud auth login
 gcloud config set project YOUR_PROJECT_ID
 
-# 2. Create a deployment
+# 2. Enable required APIs
+gcloud services enable compute.googleapis.com iap.googleapis.com
+
+# 3. Create a deployment
 ./scripts/manage_deployment.sh create my-bot
 
-# 3. SSH in and run onboarding
-gcloud compute ssh my-bot
+# 4. SSH in via IAP tunnel and run onboarding
+gcloud compute ssh my-bot --zone=us-central1-a --tunnel-through-iap
 sudo su - openclaw
 openclaw onboard --install-daemon
 ```
@@ -77,6 +80,7 @@ openclaw onboard --install-daemon
 | `--zone ZONE` | GCP zone (default: us-central1-a) |
 | `--machine-type TYPE` | Machine type (default: t2a-standard-2) |
 | `--disk-size SIZE` | Boot disk size (default: 50GB) |
+| `--disk-type TYPE` | Boot disk type: pd-ssd or pd-standard (default: pd-ssd) |
 | `--tailscale-key KEY` | Tailscale auth key for auto-connect |
 | `--install-mode MODE` | `release` (npm) or `development` (source) |
 | `--dry-run` | Preview without making changes |
@@ -90,6 +94,7 @@ openclaw onboard --install-daemon
 | `GCP_ZONE` | `us-central1-a` | The GCP zone to deploy in |
 | `GCP_MACHINE_TYPE` | `t2a-standard-2` | The machine type (CPU/RAM) |
 | `GCP_DISK_SIZE` | `50GB` | The size of the boot disk |
+| `GCP_DISK_TYPE` | `pd-ssd` | Boot disk type (pd-ssd or pd-standard) |
 
 ## Backup & Restore
 
@@ -134,13 +139,30 @@ openclaw_ssh_keys:
 # openclaw_repo_branch: "feature-branch"
 ```
 
-## Security & Access (Tailscale)
+## Security & Access
 
-OpenClaw Deploy enforces a **Zero Trust** network model using [Tailscale](https://tailscale.com/).
+OpenClaw Deploy enforces a **Zero Trust** network model with private VMs and [Tailscale](https://tailscale.com/) VPN.
+
+### Connecting to Your VM
+
+VMs are private by default (no public IP) for security. Connect via IAP tunnel:
+
+```bash
+# SSH via IAP (recommended)
+gcloud compute ssh <vm-name> --zone=<zone> --tunnel-through-iap
+
+# Or use the configured SSH alias
+ssh <vm-name>.<zone>.<project-id>
+```
 
 ### Hardened Security Model
 
-- **Public Firewall**: Only SSH (22) open; all other ports blocked
+- **Isolated VPC**: Dedicated `openclaw-vpc` network isolates workloads from other projects
+- **No Public IP**: VMs have no external IP address, not discoverable via Shodan or port scanners
+- **Cloud NAT**: Outbound connectivity via Cloud NAT for package updates and external APIs
+- **IAP SSH**: SSH access via Identity-Aware Proxy with Google authentication
+- **Least-Privilege Service Account**: Dedicated `openclaw-sa` with only logging and monitoring permissions
+- **SSD Storage**: Fast pd-ssd boot disks by default for better performance
 - **Limited Sudo**: openclaw user has NOPASSWD only for specific commands (tailscale, systemctl)
 - **Docker Hardening**: User namespace remapping, no-new-privileges, IPv6 iptables
 - **Encrypted Backups**: GPG encryption by default
@@ -212,23 +234,27 @@ gcloud compute ssh my-bot -- -L 8080:localhost:8080 -N
 
 ## Cost Estimates
 
-Default configuration: **t2a-standard-2** (ARM) in US region.
+Default configuration: **t2a-standard-2** (ARM) in US region with SSD storage.
 
 | Resource | Specification | Est. Monthly Cost |
 | :--- | :--- | :--- |
 | **Compute** | t2a-standard-2 (2 vCPU, 8GB RAM) | ~$56 |
-| **Storage** | 50GB Standard Persistent Disk | ~$2 |
+| **Storage** | 50GB SSD Persistent Disk (pd-ssd) | ~$8.50 |
+| **Cloud NAT** | NAT gateway + data processing | ~$1-5 |
 | **Network** | Egress (varies) | ~$0-10 |
-| **Total** | | **~$58/month** |
+| **Total** | | **~$66-80/month** |
+
+*Use `--disk-type pd-standard` for lower storage costs (~$2/month for 50GB).*
 
 ## Troubleshooting
 
 | Issue | Solution |
 | :--- | :--- |
-| SSH connection failed | Run `gcloud compute config-ssh` to refresh SSH config |
-| Permission denied | Ensure your GCP user has `Compute Instance Admin` role |
+| SSH connection failed | Use `gcloud compute ssh <vm> --tunnel-through-iap` |
+| Permission denied | Ensure your GCP user has `Compute Instance Admin` and `IAP-secured Tunnel User` roles |
 | Ansible unreachable | Wait 1-2 minutes for VM to initialize, then retry `update` |
-| Tailscale not connecting | SSH in and run `sudo tailscale up` manually |
+| Tailscale not connecting | SSH in via IAP and run `sudo tailscale up` manually |
+| IAP API not enabled | Run `gcloud services enable iap.googleapis.com` |
 
 Run the prerequisite checker to diagnose issues:
 

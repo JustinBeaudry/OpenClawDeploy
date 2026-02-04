@@ -9,7 +9,7 @@ Before you begin, ensure you have:
 - [ ] **Google Cloud SDK** installed ([Install Guide](https://cloud.google.com/sdk/docs/install))
 - [ ] **Ansible 2.14+** installed (`pip install ansible` or `brew install ansible`)
 - [ ] **GCP Project** with billing enabled
-- [ ] **Compute Engine API** enabled in your project
+- [ ] **Compute Engine API** and **IAP API** enabled in your project
 
 Verify your setup:
 
@@ -27,8 +27,8 @@ gcloud auth login
 # Set your project
 gcloud config set project YOUR_PROJECT_ID
 
-# Enable Compute Engine API (if not already enabled)
-gcloud services enable compute.googleapis.com
+# Enable required APIs (if not already enabled)
+gcloud services enable compute.googleapis.com iap.googleapis.com
 ```
 
 ## Step 2: Create Your Deployment
@@ -52,11 +52,11 @@ This takes approximately 5-10 minutes.
 
 ## Step 3: Access Your Instance
 
-After deployment completes:
+VMs are private by default (no public IP) for security. Connect via IAP tunnel:
 
 ```bash
-# SSH into your instance
-gcloud compute ssh my-bot --zone us-east5-a
+# SSH via IAP tunnel
+gcloud compute ssh my-bot --zone=us-central1-a --tunnel-through-iap
 
 # Switch to the openclaw user
 sudo su - openclaw
@@ -150,10 +150,16 @@ gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
 
 ### SSH connection fails
 
-Refresh your SSH configuration:
+Use IAP tunnel for SSH (VMs have no public IP):
 
 ```bash
-gcloud compute config-ssh --project YOUR_PROJECT_ID
+gcloud compute ssh my-bot --zone=us-central1-a --tunnel-through-iap
+```
+
+If IAP is not enabled:
+
+```bash
+gcloud services enable iap.googleapis.com --project YOUR_PROJECT_ID
 ```
 
 ### Ansible fails with "host unreachable"
@@ -166,10 +172,10 @@ Wait a minute for the VM to fully initialize, then retry:
 
 ### Tailscale not connecting
 
-SSH into the VM and manually authenticate:
+SSH into the VM via IAP and manually authenticate:
 
 ```bash
-gcloud compute ssh my-bot
+gcloud compute ssh my-bot --zone=us-central1-a --tunnel-through-iap
 sudo tailscale up
 ```
 

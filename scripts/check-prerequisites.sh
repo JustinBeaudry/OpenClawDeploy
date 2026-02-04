@@ -136,6 +136,29 @@ check_compute_api() {
     return 0
 }
 
+# Check IAP API
+check_iap_api() {
+    echo ""
+    echo "Checking IAP API..."
+    echo "─────────────────────────────"
+
+    local project="${GCP_PROJECT_ID:-$(gcloud config get-value project 2>/dev/null)}"
+
+    if [ -z "$project" ]; then
+        check_warn "Cannot check API - no project configured"
+        return 1
+    fi
+
+    if gcloud services list --enabled --project="$project" 2>/dev/null | grep -q "iap.googleapis.com"; then
+        check_pass "IAP API enabled"
+    else
+        check_warn "IAP API not enabled (required for SSH access)"
+        check_info "Enable: gcloud services enable iap.googleapis.com --project=$project"
+    fi
+
+    return 0
+}
+
 # Check Ansible
 check_ansible() {
     echo ""
@@ -273,6 +296,7 @@ main() {
     check_gcloud_auth
     check_gcp_project
     check_compute_api
+    check_iap_api
     check_ansible
     check_optional_tools
     check_deployment_dir

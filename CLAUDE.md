@@ -98,6 +98,7 @@ ansible-playbook playbook.yml --ask-become-pass -e @vars.yml
 | `GCP_ZONE` | `us-central1-a` | Deployment zone |
 | `GCP_MACHINE_TYPE` | `t2a-standard-2` | Instance type (ARM) |
 | `GCP_DISK_SIZE` | `50GB` | Boot disk size |
+| `GCP_DISK_TYPE` | `pd-ssd` | Boot disk type (pd-ssd or pd-standard) |
 
 ### Ansible Variables (vars.yml)
 
@@ -117,6 +118,11 @@ ansible-playbook playbook.yml --ask-become-pass -e @vars.yml
 
 ## Security Model
 
+- **Isolated VPC**: Dedicated `openclaw-vpc` network with custom subnet for workload isolation
+- **No public IP**: VMs have private IPs only, not discoverable via Shodan or port scanners
+- **IAP SSH access**: SSH via Identity-Aware Proxy with Google authentication (no exposed SSH port)
+- **Cloud NAT**: Outbound-only connectivity for package updates and external APIs
+- **Least-privilege service account**: Dedicated `openclaw-sa` with only logging and monitoring permissions
 - **Limited sudo**: openclaw user has restricted NOPASSWD access to specific commands only (tailscale, systemctl)
 - **Docker hardening**: userns-remap enabled, no-new-privileges, ip6tables enabled
 - **Encrypted backups**: Backups are GPG-encrypted by default (use `--no-encrypt` to disable)

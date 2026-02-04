@@ -3,7 +3,7 @@ set -e
 
 # Configuration
 PROJECT_ID="${GCP_PROJECT_ID:-$(gcloud config get-value project)}"
-ZONE="${GCP_ZONE:-us-east5-a}"
+ZONE="${GCP_ZONE:-us-central1-a}"
 REMOTE_USER="${REMOTE_USER:-clawdbot}"
 
 if [ -z "$PROJECT_ID" ]; then

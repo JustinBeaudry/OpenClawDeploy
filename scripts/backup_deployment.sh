@@ -4,7 +4,7 @@ set -e
 # Configuration
 DEPLOYMENTS_DIR="deployments"
 PROJECT_ID="${GCP_PROJECT_ID:-$(gcloud config get-value project)}"
-ZONE="${GCP_ZONE:-us-east5-a}"
+ZONE="${GCP_ZONE:-us-central1-a}"
 ENCRYPT_BACKUP="${ENCRYPT_BACKUP:-true}"  # Enable encryption by default
 
 if [ -z "$PROJECT_ID" ]; then

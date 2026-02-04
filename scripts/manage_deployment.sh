@@ -10,7 +10,7 @@ ROOT_DIR="$(dirname "$SCRIPT_DIR")"
 # Default Configuration
 DEPLOYMENTS_DIR="deployments"
 PROJECT_ID="${GCP_PROJECT_ID:-}"
-ZONE="${GCP_ZONE:-us-east5-a}"
+ZONE="${GCP_ZONE:-us-central1-a}"
 MACHINE_TYPE="${GCP_MACHINE_TYPE:-t2a-standard-2}"
 DISK_SIZE="${GCP_DISK_SIZE:-50GB}"
 IMAGE_FAMILY="ubuntu-2204-lts"

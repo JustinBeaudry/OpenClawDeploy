@@ -94,7 +94,7 @@ ansible-playbook playbook.yml --ask-become-pass -e @vars.yml
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `GCP_PROJECT_ID` | gcloud config | Google Cloud project ID |
-| `GCP_ZONE` | `us-east5-a` | Deployment zone |
+| `GCP_ZONE` | `us-central1-a` | Deployment zone |
 | `GCP_MACHINE_TYPE` | `t2a-standard-2` | Instance type (ARM) |
 | `GCP_DISK_SIZE` | `50GB` | Boot disk size |
 

@@ -37,7 +37,7 @@ To apply code updates or configuration changes to an existing VM:
 ### Environment Variables
 The `manage_deployment.sh` script respects the following variables:
 *   `GCP_PROJECT_ID` (Default: `gcloud config` default)
-*   `GCP_ZONE` (Default: `us-east5-a`)
+*   `GCP_ZONE` (Default: `us-central1-a`)
 *   `GCP_MACHINE_TYPE` (Default: `t2a-standard-2`)
 *   `GCP_DISK_SIZE` (Default: `50GB`)
 

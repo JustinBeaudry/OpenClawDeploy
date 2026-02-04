@@ -74,7 +74,7 @@ openclaw onboard --install-daemon
 
 | Option | Description |
 | :--- | :--- |
-| `--zone ZONE` | GCP zone (default: us-east5-a) |
+| `--zone ZONE` | GCP zone (default: us-central1-a) |
 | `--machine-type TYPE` | Machine type (default: t2a-standard-2) |
 | `--disk-size SIZE` | Boot disk size (default: 50GB) |
 | `--tailscale-key KEY` | Tailscale auth key for auto-connect |
@@ -87,7 +87,7 @@ openclaw onboard --install-daemon
 | Variable | Default | Description |
 | :--- | :--- | :--- |
 | `GCP_PROJECT_ID` | `(gcloud config)` | Google Cloud project ID |
-| `GCP_ZONE` | `us-east5-a` | The GCP zone to deploy in |
+| `GCP_ZONE` | `us-central1-a` | The GCP zone to deploy in |
 | `GCP_MACHINE_TYPE` | `t2a-standard-2` | The machine type (CPU/RAM) |
 | `GCP_DISK_SIZE` | `50GB` | The size of the boot disk |
 

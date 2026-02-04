@@ -34,7 +34,7 @@ gcloud services enable compute.googleapis.com
 ## Step 2: Create Your Deployment
 
 ```bash
-# Basic deployment (uses defaults: us-east5-a, t2a-standard-2, 50GB)
+# Basic deployment (uses defaults: us-central1-a, t2a-standard-2, 50GB)
 ./scripts/manage_deployment.sh create my-bot
 
 # Or with custom options

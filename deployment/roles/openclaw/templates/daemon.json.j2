@@ -1,9 +1,11 @@
 {
   "iptables": true,
   "ip-forward": true,
+  "ip6tables": true,
   "userland-proxy": false,
   "live-restore": true,
-  "ip6tables": false,
+  "no-new-privileges": true,
+  "userns-remap": "default",
   "log-driver": "json-file",
   "log-opts": {
     "max-size": "10m",
@@ -14,5 +16,12 @@
       "base": "172.17.0.0/12",
       "size": 24
     }
-  ]
+  ],
+  "default-ulimits": {
+    "nofile": {
+      "Name": "nofile",
+      "Hard": 65536,
+      "Soft": 65536
+    }
+  }
 }

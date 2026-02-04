@@ -5,22 +5,77 @@ set -e
 DEPLOYMENTS_DIR="deployments"
 PROJECT_ID="${GCP_PROJECT_ID:-$(gcloud config get-value project)}"
 ZONE="${GCP_ZONE:-us-east5-a}"
+ENCRYPT_BACKUP="${ENCRYPT_BACKUP:-true}"  # Enable encryption by default
 
 if [ -z "$PROJECT_ID" ]; then
     echo "❌ Error: No GCP Project ID found. Please set GCP_PROJECT_ID or configure gcloud."
     exit 1
 fi
 
-VM_NAME=$1
+VM_NAME=""
+NO_ENCRYPT=false
 
 usage() {
-    echo "Usage: $0 <vm_name>"
-    echo "Backs up .clawdbot, clawd, .openclaw, and other legacy configurations, plus installed software lists."
+    echo "Usage: $0 [OPTIONS] <vm_name>"
+    echo ""
+    echo "Backs up OpenClaw configurations, sessions, and installed software lists."
+    echo ""
+    echo "Options:"
+    echo "  --no-encrypt    Skip GPG encryption (NOT RECOMMENDED - backup will contain SSH keys)"
+    echo "  -h, --help      Show this help message"
+    echo ""
+    echo "Environment variables:"
+    echo "  ENCRYPT_BACKUP=false    Disable encryption (same as --no-encrypt)"
+    echo "  BACKUP_PASSPHRASE       Passphrase for encryption (will prompt if not set)"
+    echo ""
+    echo "Examples:"
+    echo "  $0 my-bot                    # Create encrypted backup"
+    echo "  $0 --no-encrypt my-bot       # Create unencrypted backup (not recommended)"
     exit 1
 }
 
+# Parse arguments
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --no-encrypt)
+            NO_ENCRYPT=true
+            shift
+            ;;
+        -h|--help)
+            usage
+            ;;
+        -*)
+            echo "❌ Error: Unknown option $1"
+            usage
+            ;;
+        *)
+            VM_NAME="$1"
+            shift
+            ;;
+    esac
+done
+
 if [ -z "$VM_NAME" ]; then
     usage
+fi
+
+# Determine encryption setting
+if [ "$ENCRYPT_BACKUP" = "false" ] || [ "$NO_ENCRYPT" = "true" ]; then
+    USE_ENCRYPTION=false
+    echo "⚠️  WARNING: Backup will NOT be encrypted. It may contain SSH keys and credentials."
+    read -p "Are you sure you want to continue without encryption? (y/N) " -n 1 -r
+    echo
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        echo "Aborted. Run without --no-encrypt for encrypted backup."
+        exit 1
+    fi
+else
+    USE_ENCRYPTION=true
+    # Check if gpg is available
+    if ! command -v gpg &> /dev/null; then
+        echo "❌ Error: gpg is required for encrypted backups. Install it or use --no-encrypt."
+        exit 1
+    fi
 fi
 
 VM_DIR="$DEPLOYMENTS_DIR/$VM_NAME"
@@ -180,4 +235,37 @@ gcloud compute ssh "$VM_NAME" --project="$PROJECT_ID" --zone="$ZONE" --command="
 # Cleanup local temp script
 rm "$LOCAL_SCRIPT_NAME"
 
-echo "✅ Backup saved to $BACKUP_DIR/$REMOTE_ARCHIVE_NAME"
+# Encrypt backup if enabled
+if [ "$USE_ENCRYPTION" = "true" ]; then
+    echo "🔐 Encrypting backup..."
+    ENCRYPTED_NAME="${REMOTE_ARCHIVE_NAME}.gpg"
+
+    if [ -n "$BACKUP_PASSPHRASE" ]; then
+        # Use passphrase from environment
+        gpg --batch --yes --passphrase "$BACKUP_PASSPHRASE" \
+            --symmetric --cipher-algo AES256 \
+            -o "$BACKUP_DIR/$ENCRYPTED_NAME" \
+            "$BACKUP_DIR/$REMOTE_ARCHIVE_NAME"
+    else
+        # Prompt for passphrase
+        echo "Enter a passphrase for backup encryption (you'll need this to restore):"
+        gpg --symmetric --cipher-algo AES256 \
+            -o "$BACKUP_DIR/$ENCRYPTED_NAME" \
+            "$BACKUP_DIR/$REMOTE_ARCHIVE_NAME"
+    fi
+
+    # Securely delete unencrypted backup
+    if [ -f "$BACKUP_DIR/$ENCRYPTED_NAME" ]; then
+        echo "🗑️  Removing unencrypted backup..."
+        rm -f "$BACKUP_DIR/$REMOTE_ARCHIVE_NAME"
+        echo "✅ Encrypted backup saved to $BACKUP_DIR/$ENCRYPTED_NAME"
+        echo ""
+        echo "To decrypt: gpg -d $BACKUP_DIR/$ENCRYPTED_NAME | tar xzf -"
+    else
+        echo "❌ Error: Encryption failed. Unencrypted backup retained at $BACKUP_DIR/$REMOTE_ARCHIVE_NAME"
+        exit 1
+    fi
+else
+    echo "✅ Backup saved to $BACKUP_DIR/$REMOTE_ARCHIVE_NAME"
+    echo "⚠️  WARNING: This backup is NOT encrypted and may contain sensitive data."
+fi

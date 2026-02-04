@@ -70,13 +70,38 @@
         path: "{{ '/opt/homebrew/bin/brew' if is_macos else '/home/linuxbrew/.linuxbrew/bin/brew' }}"
       register: homebrew_check
 
+    - name: Download Homebrew install script for verification
+      ansible.builtin.get_url:
+        url: https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh
+        dest: /tmp/homebrew_install.sh
+        mode: '0755'
+      when: not homebrew_check.stat.exists
+      become: false
+
+    - name: Verify Homebrew script is from official source (basic validation)
+      ansible.builtin.shell: |
+        # Verify script contains expected Homebrew markers
+        grep -q 'HOMEBREW_' /tmp/homebrew_install.sh && \
+        grep -q 'github.com/Homebrew' /tmp/homebrew_install.sh && \
+        head -5 /tmp/homebrew_install.sh | grep -q '#!/bin/bash'
+      when: not homebrew_check.stat.exists
+      become: false
+      changed_when: false
+
     - name: Install Homebrew (macOS and Linux)
       ansible.builtin.shell: |
-        NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+        NONINTERACTIVE=1 /bin/bash /tmp/homebrew_install.sh
       args:
         creates: "{{ '/opt/homebrew/bin/brew' if is_macos else '/home/linuxbrew/.linuxbrew/bin/brew' }}"
       when: not homebrew_check.stat.exists
       register: homebrew_install
+      become: false
+
+    - name: Clean up Homebrew install script
+      ansible.builtin.file:
+        path: /tmp/homebrew_install.sh
+        state: absent
+      when: homebrew_install is defined
       become: false
 
     - name: Add Homebrew to PATH for current session (Linux)

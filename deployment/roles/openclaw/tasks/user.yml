@@ -9,15 +9,21 @@
     home: /home/openclaw
     state: present
 
-- name: Add openclaw user to sudoers with NOPASSWD
+- name: Add openclaw user to sudoers with limited NOPASSWD commands
   ansible.builtin.copy:
     dest: /etc/sudoers.d/openclaw
     mode: '0440'
     owner: root
     group: root
     content: |
-      # Allow openclaw user to run sudo without password
-      openclaw ALL=(ALL) NOPASSWD: ALL
+      # Allow openclaw user limited sudo without password
+      # Only specific commands needed for OpenClaw operation
+      openclaw ALL=(ALL) NOPASSWD: /usr/bin/tailscale, /usr/bin/tailscale status, /usr/bin/tailscale up *
+      openclaw ALL=(ALL) NOPASSWD: /bin/systemctl --user *, /usr/bin/systemctl --user *
+      openclaw ALL=(ALL) NOPASSWD: /bin/systemctl status openclaw*, /usr/bin/systemctl status openclaw*
+      openclaw ALL=(ALL) NOPASSWD: /bin/systemctl restart openclaw*, /usr/bin/systemctl restart openclaw*
+      openclaw ALL=(ALL) NOPASSWD: /usr/bin/loginctl enable-linger openclaw
+      # Docker commands require password (docker group provides access anyway)
     validate: /usr/sbin/visudo -cf %s
 
 - name: Set openclaw user as primary user for installation

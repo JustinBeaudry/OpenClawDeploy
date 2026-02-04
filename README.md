@@ -2,142 +2,245 @@
 
 **OpenClaw Deploy** is a command-line tool designed to simplify the provisioning and management of [OpenClaw](https://github.com/openclaw/openclaw) instances on Google Cloud Platform (GCP). It automates infrastructure creation using `gcloud` and application deployment using `ansible`.
 
+> **New to OpenClaw Deploy?** Check out the [QUICKSTART.md](QUICKSTART.md) for a 5-minute setup guide.
+
 ## Features
 
--   **One-Command Provisioning**: Creates a VM, configures SSH, and deploys OpenClaw in a single step.
--   **Idempotent Updates**: Easily update existing deployments without recreating infrastructure.
--   **Environment Configurable**: customize project, zone, machine type, and disk size via environment variables.
--   **Secure Defaults**: Uses secure Ubuntu LTS images and configures OS login.
+- **One-Command Provisioning**: Creates a VM, configures SSH, and deploys OpenClaw in a single step
+- **CLI Flags**: Configure zone, machine type, Tailscale key, and more directly from the command line
+- **Dry-Run Mode**: Preview what will happen before making any changes
+- **Prerequisite Checker**: Validates your environment before deployment
+- **Encrypted Backups**: GPG-encrypted backups by default to protect SSH keys and credentials
+- **Secure Defaults**: Limited sudo access, Docker hardening, UFW firewall, Tailscale VPN
+- **Idempotent Updates**: Safely re-run deployments to converge to desired state
 
 ## Prerequisites
 
--   [Google Cloud SDK (`gcloud`)](https://cloud.google.com/sdk/docs/install) installed and authenticated.
--   [Ansible](https://docs.ansible.com/ansible/latest/installation_guide/intro_installation.html) installed locally.
--   A GCP Project with Compute Engine API enabled.
+- [Google Cloud SDK (`gcloud`)](https://cloud.google.com/sdk/docs/install) installed and authenticated
+- [Ansible 2.14+](https://docs.ansible.com/ansible/latest/installation_guide/intro_installation.html) installed locally
+- A GCP Project with Compute Engine API enabled
 
-## Configuration
-
-You can configure the deployment using the following environment variables.
-
-| Variable | Default | Description |
-| :--- | :--- | :--- |
-| `GCP_PROJECT_ID` | `(gcloud config default)` | **Required.** The ID of your Google Cloud project. |
-| `GCP_ZONE` | `us-east5-a` | The GCP zone to deploy the VM in. |
-| `GCP_MACHINE_TYPE` | `t2a-standard-2` | The machine type (CPU/RAM). See [Cost Estimates](#cost-estimates). |
-| `GCP_DISK_SIZE` | `50GB` | The size of the boot disk. |
-
-## Parallel Development
-
-You can run a local instance of the agent (e.g., for development or debugging) while leveraging the remote infrastructure (Signal/WhatsApp gateway) on your VM.
-
-### Method: SSH Tunneling
-
-To connect your local agent to the remote Signal daemon (running on the VM), create an SSH tunnel:
+**Verify your setup:**
 
 ```bash
-# Forward remote port 8080 (Signal) to local port 8080
-gcloud compute ssh <vm-name> --project=<project-id> --zone=<zone> -- -L 8080:localhost:8080 -N
+./scripts/check-prerequisites.sh
 ```
 
-Then, configure your local bot to use the local tunnel:
+## Quick Start
 
-```json
-// clawdbot.json (local)
-"channels": {
-  "signal": {
-    "httpUrl": "http://127.0.0.1:8080"
-  }
-}
+```bash
+# 1. Authenticate with GCP
+gcloud auth login
+gcloud config set project YOUR_PROJECT_ID
+
+# 2. Create a deployment
+./scripts/manage_deployment.sh create my-bot
+
+# 3. SSH in and run onboarding
+gcloud compute ssh my-bot
+sudo su - openclaw
+openclaw onboard --install-daemon
 ```
-
-**⚠️ Important:** You should stop the remote `clawdbot` service (`systemctl --user stop clawdbot`) before running your local instance to prevent both agents from competing for incoming messages.
-
-## Security & Access (Tailscale)
-
-OpenClawDeploy enforces a **Zero Trust** network model using [Tailscale](https://tailscale.com/).
-
-### 1. The "Checkpointed" State
-Once deployed, the instance enters a hardened "checkpoint" state:
-*   **Public Firewall:** BLOCKED. No incoming traffic is allowed on the public IP (except SSH for admin).
-*   **Application Binding:** OpenClaw (`clawdbot`) binds **only** to the Tailscale network interface (`tailnet`). It allows no access from localhost or the public internet.
-*   **Secure Access:** You must be connected to your Tailscale network (VPN) to access the application.
-
-### 2. Setup Instructions
-To enable this secure access, you must provide a Tailscale Auth Key during or after deployment.
-
-1.  Go to the [Tailscale Admin Console > Keys](https://login.tailscale.com/admin/settings/keys).
-2.  Generate a new **Auth Key** (Reusable is recommended if you destroy/recreate often).
-3.  Add the key to your deployment's variable file:
-    ```yaml
-    # deployments/<vm-name>/vars.yml
-    tailscale_authkey: "tskey-auth-wiCp..."
-    ```
-4.  Apply the configuration:
-    ```bash
-    ./scripts/manage_deployment.sh update <vm-name>
-    ```
-
-### 3. Accessing the Bot
-Once the update completes:
-1.  Open the Tailscale app on your device (iOS, Android, macOS, etc.) and verify you are connected.
-2.  Find the machine (e.g., `shodan`) in your Tailscale machine list.
-3.  Access the OpenClaw gateway using its Tailscale IP:
-    ```
-    http://100.x.y.z:18789
-    ```
 
 ## Usage
 
-The script is located at `scripts/manage_deployment.sh`.
-
-### 1. Create a New Deployment
-
-This command provisions a new VM named `my-claw-bot`, generates an inventory file, and runs the Ansible playbook to install OpenClaw.
+### Create a New Deployment
 
 ```bash
-# Optional: Set environment variables
-export GCP_PROJECT_ID="my-gcp-project-id"
-export GCP_ZONE="us-central1-a"
+# Basic (uses defaults)
+./scripts/manage_deployment.sh create my-bot
 
-# Run the script
-./scripts/manage_deployment.sh create my-claw-bot
+# With custom options
+./scripts/manage_deployment.sh create my-bot \
+    --zone us-central1-a \
+    --machine-type e2-medium \
+    --tailscale-key tskey-auth-xxxxx
+
+# Preview without making changes
+./scripts/manage_deployment.sh create my-bot --dry-run
 ```
 
-### 2. Update an Existing Deployment
-
-This command refreshes the SSH configuration (useful if the VM IP changed) and re-runs the Ansible playbook to update configurations or code.
+### Update an Existing Deployment
 
 ```bash
-./scripts/manage_deployment.sh update my-claw-bot
+# Re-run playbook with current vars.yml
+./scripts/manage_deployment.sh update my-bot
+
+# Update with CLI overrides
+./scripts/manage_deployment.sh update my-bot --install-mode development
 ```
 
-## Directory Structure
+### CLI Options
 
-Deployments are stored in the `deployments/` directory (ignored by git).
+| Option | Description |
+| :--- | :--- |
+| `--zone ZONE` | GCP zone (default: us-east5-a) |
+| `--machine-type TYPE` | Machine type (default: t2a-standard-2) |
+| `--disk-size SIZE` | Boot disk size (default: 50GB) |
+| `--tailscale-key KEY` | Tailscale auth key for auto-connect |
+| `--install-mode MODE` | `release` (npm) or `development` (source) |
+| `--dry-run` | Preview without making changes |
+| `--help` | Show all options |
 
-```text
+### Environment Variables
+
+| Variable | Default | Description |
+| :--- | :--- | :--- |
+| `GCP_PROJECT_ID` | `(gcloud config)` | Google Cloud project ID |
+| `GCP_ZONE` | `us-east5-a` | The GCP zone to deploy in |
+| `GCP_MACHINE_TYPE` | `t2a-standard-2` | The machine type (CPU/RAM) |
+| `GCP_DISK_SIZE` | `50GB` | The size of the boot disk |
+
+## Backup & Restore
+
+```bash
+# Create encrypted backup (default)
+./scripts/backup_deployment.sh my-bot
+
+# Create unencrypted backup (not recommended)
+./scripts/backup_deployment.sh --no-encrypt my-bot
+
+# Restore from backup
+./scripts/restore_deployment.sh my-bot backups/backup_my-bot_20260203.tar.gz.gpg
+```
+
+## Configuration
+
+Deployments are stored in `deployments/<vm-name>/`:
+
+```
 deployments/
-└── my-claw-bot/
+└── my-bot/
     ├── inventory.ini   # Generated Ansible inventory
-    └── vars.yml        # Customizable variables (Tailscale key, etc.)
+    └── vars.yml        # Customizable variables
 ```
 
-To customize a specific deployment (e.g., to add a Tailscale auth key), edit `deployments/<vm-name>/vars.yml` before running the `create` or `update` command (for `create`, the file is generated after the VM creation step but before the playbook run if you want to intervene, or you can let it run default and then update). *Note: The script currently runs creating and ansible in one go. You can modify `vars.yml` after the first run and run `update` to apply changes.*
+Edit `vars.yml` to customize your deployment:
+
+```yaml
+# Installation mode
+openclaw_install_mode: "release"  # or "development"
+
+# Tailscale VPN
+tailscale_authkey: "tskey-auth-xxxxx"
+
+# SSH keys for openclaw user
+openclaw_ssh_keys:
+  - "ssh-ed25519 AAAAC3... user@laptop"
+
+# Development mode settings
+# openclaw_repo_url: "https://github.com/YOUR_USER/openclaw.git"
+# openclaw_repo_branch: "feature-branch"
+```
+
+## Security & Access (Tailscale)
+
+OpenClaw Deploy enforces a **Zero Trust** network model using [Tailscale](https://tailscale.com/).
+
+### Hardened Security Model
+
+- **Public Firewall**: Only SSH (22) open; all other ports blocked
+- **Limited Sudo**: openclaw user has NOPASSWD only for specific commands (tailscale, systemctl)
+- **Docker Hardening**: User namespace remapping, no-new-privileges, IPv6 iptables
+- **Encrypted Backups**: GPG encryption by default
+
+### Setup Tailscale
+
+1. Get an auth key from [Tailscale Admin Console](https://login.tailscale.com/admin/settings/keys)
+2. Deploy with the key:
+   ```bash
+   ./scripts/manage_deployment.sh create my-bot --tailscale-key tskey-auth-xxxxx
+   ```
+3. Access via Tailscale IP: `http://100.x.y.z:3000`
+
+## Using AI Assistants with OpenClaw
+
+OpenClaw works with any LLM provider, but you can maximize value by using CLI-based AI assistants that leverage your existing subscriptions—avoiding per-token API fees entirely.
+
+### Recommended Setup
+
+| Tool | Use Case | Subscription |
+| :--- | :--- | :--- |
+| [Gemini CLI](https://github.com/google-gemini/gemini-cli) | General reasoning, research, planning | [Google AI Ultra](https://one.google.com/explore-plan/gemini-advanced) ($125/mo intro, then $250/mo) |
+| [Claude Code](https://claude.ai/code) | Programming, code generation, debugging | [Claude Max](https://claude.ai/pricing) ($100-200/mo) |
+
+### Why This Approach?
+
+- **No API fees**: Use your subscription's included tokens instead of pay-per-use APIs
+- **Higher limits**: Subscription plans typically offer more generous rate limits
+- **Better models**: Access to latest models (Gemini 2.5 Pro, Claude Opus 4.5) included in subscription
+
+### Example Configuration
+
+Configure OpenClaw to use Gemini CLI as the default brain for general tasks:
+
+```bash
+# Install Gemini CLI
+npm install -g @anthropic-ai/gemini-cli
+
+# Configure as default
+openclaw config set default_model gemini-2.5-pro
+```
+
+For programming-heavy workloads, use Claude Code:
+
+```bash
+# Claude Code handles code generation, refactoring, debugging
+# Run from your project directory
+claude
+```
+
+### Author's Setup
+
+This project uses **Gemini CLI** (Gemini 2.5 Pro) as the primary reasoning engine for research, planning, and general tasks, with **Claude Code** (Claude Opus 4.5) for programming-specific work. This combination provides excellent coverage without API costs beyond the monthly subscriptions.
+
+## Parallel Development
+
+Run a local OpenClaw instance while using remote infrastructure (Signal/WhatsApp gateway):
+
+```bash
+# Create SSH tunnel to remote gateway
+gcloud compute ssh my-bot -- -L 8080:localhost:8080 -N
+
+# Configure local instance to use tunnel
+# In openclaw.json:
+# "channels": { "signal": { "httpUrl": "http://127.0.0.1:8080" } }
+```
+
+**Important:** Stop the remote service first: `systemctl --user stop openclaw`
 
 ## Cost Estimates
 
-The default configuration uses a **t2a-standard-2** instance (ARM) in a US region.
+Default configuration: **t2a-standard-2** (ARM) in US region.
 
-| Resource | Specification | Est. Monthly Cost (USD) |
+| Resource | Specification | Est. Monthly Cost |
 | :--- | :--- | :--- |
-| **Compute** | t2a-standard-2 (2 vCPU, 8GB RAM ARM) | ~$56.00 |
-| **Storage** | 50GB Standard Persistent Disk | ~$2.00 |
-| **Network** | Egress (varies by usage) | ~$0.00 - $10.00+ |
-| **Total** | | **~$58.00 / month** |
-
-*Note: Costs are estimates and vary by region and usage. E2 instances may offer sustained use discounts.*
+| **Compute** | t2a-standard-2 (2 vCPU, 8GB RAM) | ~$56 |
+| **Storage** | 50GB Standard Persistent Disk | ~$2 |
+| **Network** | Egress (varies) | ~$0-10 |
+| **Total** | | **~$58/month** |
 
 ## Troubleshooting
 
--   **SSH Connection Failed**: Ensure `gcloud auth login` and `gcloud config set project <id>` are run. The script attempts to update SSH config automatically.
--   **Permission Denied**: Ensure your GCP user has `Compute Instance Admin` privileges.
+| Issue | Solution |
+| :--- | :--- |
+| SSH connection failed | Run `gcloud compute config-ssh` to refresh SSH config |
+| Permission denied | Ensure your GCP user has `Compute Instance Admin` role |
+| Ansible unreachable | Wait 1-2 minutes for VM to initialize, then retry `update` |
+| Tailscale not connecting | SSH in and run `sudo tailscale up` manually |
+
+Run the prerequisite checker to diagnose issues:
+
+```bash
+./scripts/check-prerequisites.sh
+```
+
+## Documentation
+
+- [QUICKSTART.md](QUICKSTART.md) - 5-minute getting started guide
+- [CLAUDE.md](CLAUDE.md) - Guide for AI assistants working with this codebase
+- [deployment/README.md](deployment/README.md) - Detailed Ansible documentation
+
+## License
+
+MIT

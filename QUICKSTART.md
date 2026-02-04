@@ -73,8 +73,8 @@ Tailscale provides secure remote access without exposing ports.
 
 2. Add it to your deployment:
    ```bash
-   # Edit your deployment variables
-   nano deployments/my-bot/vars.yml
+   # Edit your deployment variables (filename includes zone and project)
+   nano inventory/my-bot.us-central1-a.YOUR_PROJECT.yml
 
    # Add your key:
    # tailscale_authkey: "tskey-auth-xxxxx"
@@ -102,7 +102,7 @@ Build OpenClaw from source instead of npm:
 
 ### Custom Fork/Branch
 
-Edit `deployments/my-bot/vars.yml`:
+Edit your instance's `.yml` file in `inventory/`:
 
 ```yaml
 openclaw_install_mode: "development"
@@ -118,7 +118,7 @@ Then update:
 
 ### Add SSH Keys
 
-Edit `deployments/my-bot/vars.yml`:
+Edit your instance's `.yml` file in `inventory/`:
 
 ```yaml
 openclaw_ssh_keys:

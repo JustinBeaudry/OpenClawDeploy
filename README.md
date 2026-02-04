@@ -101,21 +101,22 @@ openclaw onboard --install-daemon
 ./scripts/backup_deployment.sh --no-encrypt my-bot
 
 # Restore from backup
-./scripts/restore_deployment.sh my-bot backups/backup_my-bot_20260203.tar.gz.gpg
+./scripts/restore_deployment.sh my-bot backups/my-bot/backup_my-bot_20260203.tar.gz.gpg
 ```
 
 ## Configuration
 
-Deployments are stored in `deployments/<vm-name>/`:
+Instance configurations are stored in `inventory/`:
 
 ```
-deployments/
-└── my-bot/
-    ├── inventory.ini   # Generated Ansible inventory
-    └── vars.yml        # Customizable variables
+inventory/
+├── my-bot.us-central1-a.my-project.ini   # Ansible inventory
+└── my-bot.us-central1-a.my-project.yml   # Instance variables
 ```
 
-Edit `vars.yml` to customize your deployment:
+Backups are stored separately in `backups/<vm-name>/`.
+
+Edit the `.yml` file to customize your deployment:
 
 ```yaml
 # Installation mode

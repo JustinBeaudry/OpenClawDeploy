@@ -8,7 +8,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(dirname "$SCRIPT_DIR")"
 
 # Default Configuration
-DEPLOYMENTS_DIR="deployments"
+INVENTORY_DIR="inventory"
 PROJECT_ID="${GCP_PROJECT_ID:-}"
 ZONE="${GCP_ZONE:-us-central1-a}"
 MACHINE_TYPE="${GCP_MACHINE_TYPE:-t2a-standard-2}"
@@ -232,10 +232,12 @@ run_prereq_check() {
 }
 
 create_vm() {
-    VM_DIR="$DEPLOYMENTS_DIR/$VM_NAME"
+    HOST_ALIAS="$VM_NAME.$ZONE.$PROJECT_ID"
+    INVENTORY_FILE="$INVENTORY_DIR/$HOST_ALIAS.ini"
+    VARS_FILE="$INVENTORY_DIR/$HOST_ALIAS.yml"
 
-    if [ -d "$VM_DIR" ]; then
-        echo "⚠️  Deployment '$VM_NAME' configuration already exists in $VM_DIR."
+    if [ -f "$INVENTORY_FILE" ]; then
+        echo "⚠️  Inventory for '$VM_NAME' already exists: $INVENTORY_FILE"
         if [ "$DRY_RUN" = true ]; then
             echo "   [DRY RUN] Would prompt for overwrite confirmation"
             return
@@ -249,7 +251,7 @@ create_vm() {
     fi
 
     if [ "$DRY_RUN" = true ]; then
-        echo "[DRY RUN] Would create directory: $VM_DIR"
+        echo "[DRY RUN] Would create directory: $INVENTORY_DIR"
         echo "[DRY RUN] Would execute: gcloud compute instances create $VM_NAME \\"
         echo "            --project=$PROJECT_ID \\"
         echo "            --zone=$ZONE \\"
@@ -259,11 +261,11 @@ create_vm() {
         echo "            --boot-disk-size=$DISK_SIZE \\"
         echo "            --tags=http-server,https-server \\"
         echo "            --metadata=enable-oslogin=TRUE"
-        echo "[DRY RUN] Would generate inventory.ini and vars.yml"
+        echo "[DRY RUN] Would generate $INVENTORY_FILE and $VARS_FILE"
         return
     fi
 
-    mkdir -p "$VM_DIR"
+    mkdir -p "$INVENTORY_DIR"
 
     log_msg "🚀 Creating VM '$VM_NAME' in project '$PROJECT_ID' (Zone: $ZONE)..."
     log_verbose "Machine type: $MACHINE_TYPE, Disk: $DISK_SIZE"
@@ -291,18 +293,16 @@ create_vm() {
     gcloud compute config-ssh --project="$PROJECT_ID" --quiet
 
     # Create Inventory File
-    HOST_ALIAS="$VM_NAME.$ZONE.$PROJECT_ID"
-
-    log_msg "📝 Generating inventory file..."
-    cat > "$VM_DIR/inventory.ini" <<EOF
+    log_msg "📝 Generating inventory file: $INVENTORY_FILE"
+    cat > "$INVENTORY_FILE" <<EOF
 [openclaw_hosts]
 $HOST_ALIAS
 EOF
 
     # Create vars.yml with comprehensive template
-    generate_vars_file "$VM_DIR/vars.yml"
+    generate_vars_file "$VARS_FILE"
 
-    log_msg "📂 Deployment configuration saved to $VM_DIR"
+    log_msg "📂 Instance configuration saved to $INVENTORY_DIR/"
 }
 
 generate_vars_file() {
@@ -310,7 +310,7 @@ generate_vars_file() {
 
     # Only generate if it doesn't exist (preserve user edits)
     if [ -f "$VARS_FILE" ]; then
-        log_msg "📝 vars.yml already exists, preserving existing configuration"
+        log_msg "📝 $VARS_FILE already exists, preserving existing configuration"
 
         # But apply CLI overrides if provided
         if [ -n "$CLI_INSTALL_MODE" ]; then
@@ -326,7 +326,7 @@ generate_vars_file() {
         return
     fi
 
-    log_msg "📝 Generating comprehensive variables file..."
+    log_msg "📝 Generating variables file: $VARS_FILE"
 
     # Determine values (CLI overrides or defaults)
     local INSTALL_MODE="${CLI_INSTALL_MODE:-release}"
@@ -337,6 +337,9 @@ generate_vars_file() {
 # ═══════════════════════════════════════════════════════════════════
 # Edit this file to customize your deployment, then run:
 #   ./scripts/manage_deployment.sh update <vm-name>
+#
+# For secrets (tailscale_authkey), consider using ansible-vault:
+#   ansible-vault encrypt this_file.yml
 #
 # Documentation: https://github.com/openclaw/openclaw-deploy
 # ═══════════════════════════════════════════════════════════════════
@@ -384,7 +387,7 @@ VARS_TEMPLATE
 #
 # Example:
 # openclaw_ssh_keys:
-#   - "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI... user@laptop"
+#   - "ssh-ed25519 AAAAC3... user@laptop"
 #   - "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAAB... user@desktop"
 openclaw_ssh_keys: []
 
@@ -415,21 +418,23 @@ VARS_TEMPLATE
 }
 
 run_ansible() {
-    VM_DIR="$DEPLOYMENTS_DIR/$VM_NAME"
+    HOST_ALIAS="$VM_NAME.$ZONE.$PROJECT_ID"
+    INVENTORY_FILE="$INVENTORY_DIR/$HOST_ALIAS.ini"
+    VARS_FILE="$INVENTORY_DIR/$HOST_ALIAS.yml"
 
     if [ "$DRY_RUN" = true ]; then
-        echo "[DRY RUN] Would run: ansible-playbook -i $VM_DIR/inventory.ini deployment/playbook.yml -e @$VM_DIR/vars.yml"
+        echo "[DRY RUN] Would run: ansible-playbook -i $INVENTORY_FILE ansible/playbook.yml -e @$VARS_FILE"
         return
     fi
 
     log_msg "🔄 Starting Ansible Deployment..."
 
-    if [ ! -f "$VM_DIR/inventory.ini" ]; then
-        log_msg "❌ Error: Inventory file not found at $VM_DIR/inventory.ini"
+    if [ ! -f "$INVENTORY_FILE" ]; then
+        log_msg "❌ Error: Inventory file not found: $INVENTORY_FILE"
         echo ""
         echo "This can happen if:"
         echo "  1. The deployment was never created (run 'create' first)"
-        echo "  2. The deployments/ directory was deleted"
+        echo "  2. The inventory/ directory was deleted"
         echo ""
         echo "To fix: ./scripts/manage_deployment.sh create $VM_NAME"
         exit 1
@@ -437,7 +442,7 @@ run_ansible() {
 
     # Apply any CLI overrides to vars.yml before running
     if [ -n "$CLI_INSTALL_MODE" ] || [ -n "$CLI_TAILSCALE_KEY" ]; then
-        generate_vars_file "$VM_DIR/vars.yml"
+        generate_vars_file "$VARS_FILE"
     fi
 
     # Ensure requirements are installed
@@ -447,7 +452,7 @@ run_ansible() {
     fi
 
     log_msg "▶️  Running Playbook..."
-    ansible-playbook -i "$VM_DIR/inventory.ini" ansible/playbook.yml -e "@$VM_DIR/vars.yml"
+    ansible-playbook -i "$INVENTORY_FILE" ansible/playbook.yml -e "@$VARS_FILE"
 }
 
 # Main execution
@@ -465,12 +470,14 @@ main() {
             fi
             ;;
         update)
-            VM_DIR="$DEPLOYMENTS_DIR/$VM_NAME"
-            if [ ! -d "$VM_DIR" ]; then
-                log_msg "❌ Deployment '$VM_NAME' not found in $DEPLOYMENTS_DIR."
+            HOST_ALIAS="$VM_NAME.$ZONE.$PROJECT_ID"
+            INVENTORY_FILE="$INVENTORY_DIR/$HOST_ALIAS.ini"
+
+            if [ ! -f "$INVENTORY_FILE" ]; then
+                log_msg "❌ Inventory for '$VM_NAME' not found: $INVENTORY_FILE"
                 echo ""
-                echo "Available deployments:"
-                ls -1 "$DEPLOYMENTS_DIR" 2>/dev/null || echo "  (none)"
+                echo "Available inventories:"
+                ls -1 "$INVENTORY_DIR"/*.ini 2>/dev/null | sed 's|.*/||; s|\.ini$||' || echo "  (none)"
                 echo ""
                 echo "To create a new deployment: ./scripts/manage_deployment.sh create $VM_NAME"
                 exit 1

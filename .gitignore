@@ -1,4 +1,10 @@
-# Deployment configurations
+# Instance inventory and variables (may contain secrets)
+inventory/
+
+# Backup archives
+backups/
+
+# Legacy deployments directory (for backwards compatibility)
 deployments/
 
 # Temp files

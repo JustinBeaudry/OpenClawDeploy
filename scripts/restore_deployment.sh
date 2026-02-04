@@ -2,7 +2,7 @@
 set -e
 
 # Configuration
-DEPLOYMENTS_DIR="deployments"
+BACKUP_DIR="backups"
 PROJECT_ID="${GCP_PROJECT_ID:-$(gcloud config get-value project)}"
 ZONE="${GCP_ZONE:-us-central1-a}"
 
@@ -16,8 +16,14 @@ BACKUP_FILE=$2
 
 usage() {
     echo "Usage: $0 <vm_name> <backup_file_path>"
+    echo ""
     echo "Restores a deployment from a backup archive."
-    echo "Example: $0 shodan deployments/shodan/backups/backup_shodan_20260130.tar.gz"
+    echo ""
+    echo "Examples:"
+    echo "  $0 my-bot backups/my-bot/backup_my-bot_20260130.tar.gz"
+    echo "  $0 my-bot backups/my-bot/backup_my-bot_20260130.tar.gz.gpg"
+    echo ""
+    echo "For encrypted backups (.gpg), you'll be prompted for the passphrase."
     exit 1
 }
 
@@ -27,7 +33,22 @@ fi
 
 if [ ! -f "$BACKUP_FILE" ]; then
     echo "❌ Error: Backup file not found: $BACKUP_FILE"
+    echo ""
+    echo "Available backups for $VM_NAME:"
+    ls -1 "$BACKUP_DIR/$VM_NAME/" 2>/dev/null || echo "  (none found)"
     exit 1
+fi
+
+# Check if encrypted and decrypt if needed
+ACTUAL_BACKUP="$BACKUP_FILE"
+TEMP_DECRYPTED=""
+
+if [[ "$BACKUP_FILE" == *.gpg ]]; then
+    echo "🔐 Encrypted backup detected. Decrypting..."
+    TEMP_DECRYPTED="/tmp/restore_decrypted_$(date +%s).tar.gz"
+    gpg -d "$BACKUP_FILE" > "$TEMP_DECRYPTED"
+    ACTUAL_BACKUP="$TEMP_DECRYPTED"
+    echo "✅ Decryption successful."
 fi
 
 echo "🚀 Restoring VM '$VM_NAME' from '$BACKUP_FILE'..."
@@ -55,18 +76,18 @@ if [ -d "$STAGING_DIR/files/home" ]; then
     echo "👥 Restoring user data..."
     for user_dir in "$STAGING_DIR/files/home"/*; do
         username=$(basename "$user_dir")
-        
+
         # Skip if not a directory
         [ -d "$user_dir" ] || continue
-        
+
         echo "   Processing user: $username"
-        
+
         # Check if user exists, create if missing
         if ! id "$username" &>/dev/null; then
             echo "   ⚠️  User '$username' not found. Creating..."
             sudo useradd -m -s /bin/bash "$username"
         fi
-        
+
         # Restore files
         # We use rsync to merge, preserving permissions and ownership
         # We map ownership to the user on the current system (in case UIDs differ)
@@ -81,13 +102,13 @@ if [ -d "$STAGING_DIR/system_files" ]; then
     for service_file in "$STAGING_DIR/system_files"/*; do
         [ -f "$service_file" ] || continue
         filename=$(basename "$service_file")
-        
+
         echo "   Restoring /etc/systemd/system/$filename"
         sudo cp "$service_file" "/etc/systemd/system/$filename"
         sudo chown root:root "/etc/systemd/system/$filename"
         sudo chmod 644 "/etc/systemd/system/$filename"
     done
-    
+
     echo "   Reloading systemd daemon..."
     sudo systemctl daemon-reload
 fi
@@ -112,7 +133,7 @@ EOF
 
 # 2. Upload Backup and Script
 echo "📤 Uploading backup archive (this may take time)..."
-gcloud compute scp "$BACKUP_FILE" "${VM_NAME}:${REMOTE_BACKUP_PATH}" --project="$PROJECT_ID" --zone="$ZONE"
+gcloud compute scp "$ACTUAL_BACKUP" "${VM_NAME}:${REMOTE_BACKUP_PATH}" --project="$PROJECT_ID" --zone="$ZONE"
 
 echo "📤 Uploading restore script..."
 gcloud compute scp "$LOCAL_RESTORE_SCRIPT" "${VM_NAME}:/tmp/restore_script.sh" --project="$PROJECT_ID" --zone="$ZONE"
@@ -127,6 +148,7 @@ gcloud compute ssh "$VM_NAME" --project="$PROJECT_ID" --zone="$ZONE" --command="
 
 # 5. Cleanup Local
 rm "$LOCAL_RESTORE_SCRIPT"
+[ -n "$TEMP_DECRYPTED" ] && rm -f "$TEMP_DECRYPTED"
 
 echo "✅ Restore process finished."
 echo "⚠️  Recommendation: Run './scripts/manage_deployment.sh update $VM_NAME' next to enforce security hardening and base configuration."

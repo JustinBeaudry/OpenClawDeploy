@@ -8,9 +8,10 @@ This project is an **Infrastructure-as-Code (IaC)** toolset designed to automate
 *   **`ansible/`**: Contains the Ansible playbook and roles.
     *   `playbook.yml`: Main entry point for Ansible.
     *   `roles/openclaw/`: The primary role handling Docker, Node.js, UFW, and OpenClaw setup.
-*   **`deployments/`**: Stores state and configuration for individual VM instances.
-    *   `<vm_name>/inventory.ini`: Generated Ansible inventory file.
-    *   `<vm_name>/vars.yml`: Instance-specific configuration (e.g., Tailscale keys, git branches).
+*   **`inventory/`**: Stores state and configuration for individual VM instances.
+    *   `<host-alias>.ini`: Generated Ansible inventory file (e.g., `my-bot.us-central1-a.project.ini`).
+    *   `<host-alias>.yml`: Instance-specific configuration (e.g., Tailscale keys, git branches).
+*   **`backups/`**: Encrypted backup archives organized by VM name.
 
 ## Key Workflows
 
@@ -42,7 +43,7 @@ The `manage_deployment.sh` script respects the following variables:
 *   `GCP_DISK_SIZE` (Default: `50GB`)
 
 ### Ansible Variables (`vars.yml`)
-Located in `deployments/<vm_name>/vars.yml`. Key variables include:
+Located in `inventory/<host-alias>.yml`. Key variables include:
 *   `openclaw_install_mode`: `release` (default) or `development`.
 *   `tailscale_authkey`: Auth key for auto-joining a Tailscale mesh.
 *   `openclaw_repo_url` / `openclaw_repo_branch`: For development mode overrides.

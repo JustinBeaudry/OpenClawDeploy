@@ -2,7 +2,7 @@
 set -e
 
 # Configuration
-DEPLOYMENTS_DIR="deployments"
+BACKUP_DIR="backups"
 PROJECT_ID="${GCP_PROJECT_ID:-$(gcloud config get-value project)}"
 ZONE="${GCP_ZONE:-us-central1-a}"
 ENCRYPT_BACKUP="${ENCRYPT_BACKUP:-true}"  # Enable encryption by default
@@ -27,6 +27,8 @@ usage() {
     echo "Environment variables:"
     echo "  ENCRYPT_BACKUP=false    Disable encryption (same as --no-encrypt)"
     echo "  BACKUP_PASSPHRASE       Passphrase for encryption (will prompt if not set)"
+    echo ""
+    echo "Backups are stored in: $BACKUP_DIR/<vm_name>/"
     echo ""
     echo "Examples:"
     echo "  $0 my-bot                    # Create encrypted backup"
@@ -78,9 +80,8 @@ else
     fi
 fi
 
-VM_DIR="$DEPLOYMENTS_DIR/$VM_NAME"
-BACKUP_DIR="$VM_DIR/backups"
-mkdir -p "$BACKUP_DIR"
+VM_BACKUP_DIR="$BACKUP_DIR/$VM_NAME"
+mkdir -p "$VM_BACKUP_DIR"
 
 echo "🚀 Backing up VM '$VM_NAME' in project '$PROJECT_ID' (Zone: $ZONE)..."
 
@@ -110,16 +111,16 @@ fi
 
 # 2. Identify Target Directories
 FILES_TO_BACKUP=(".bashrc")
-DIRS_TO_BACKUP=(".clawdbot" "clawd" ".openclaw" ".molty" ".moltbot" "molty" "moltbot" "openclaw" ".local/share/signal-cli" ".ssh" ".config/systemd")
+DIRS_TO_BACKUP=(".openclaw" ".local/share/signal-cli" ".ssh" ".config/systemd")
 
 # Helper to check and copy
 backup_path() {
     local base_dir=$1
     local name=$2
     local use_sudo=$3
-    
+
     local path="$base_dir/$name"
-    
+
     # Check existence
     if [ "$use_sudo" = "true" ]; then
         if sudo test -e "$path"; then
@@ -128,7 +129,7 @@ backup_path() {
             # We need to recreate the parent directory structure relative to base_dir
             local relative_parent=$(dirname "$name")
             local dest_dir="$BACKUP_ROOT/files$base_dir/$relative_parent"
-            
+
             mkdir -p "$dest_dir"
             # Copy with sudo, then chown to current user so we can tar it
             sudo cp -rp "$path" "$dest_dir/"
@@ -150,7 +151,7 @@ backup_path() {
 echo "🔍 Searching for files to backup..."
 
 # Backup system-level service files
-SYSTEM_FILES=("/etc/systemd/system/clawdbot.service" "/etc/systemd/system/openclaw.service")
+SYSTEM_FILES=("/etc/systemd/system/openclaw.service")
 echo "Checking system files..."
 for file in "${SYSTEM_FILES[@]}"; do
     if sudo test -e "$file"; then
@@ -177,18 +178,6 @@ if id "openclaw" &>/dev/null; then
         echo "Checking openclaw user home: $OPENCLAW_HOME"
         for item in "${FILES_TO_BACKUP[@]}" "${DIRS_TO_BACKUP[@]}"; do
             backup_path "$OPENCLAW_HOME" "$item" "true"
-        done
-    fi
-fi
-
-# Check clawdbot user home if it exists
-if id "clawdbot" &>/dev/null; then
-    CLAWDBOT_HOME=$(getent passwd clawdbot | cut -d: -f6)
-    # Only check if it's different from current user
-    if [ "$CLAWDBOT_HOME" != "$CURRENT_USER_HOME" ]; then
-        echo "Checking clawdbot user home: $CLAWDBOT_HOME"
-        for item in "${FILES_TO_BACKUP[@]}" "${DIRS_TO_BACKUP[@]}"; do
-            backup_path "$CLAWDBOT_HOME" "$item" "true"
         done
     fi
 fi
@@ -226,7 +215,7 @@ fi
 
 # Download backup
 echo "📥 Downloading backup $REMOTE_ARCHIVE_NAME..."
-gcloud compute scp "${VM_NAME}:$REMOTE_ARCHIVE_PATH" "$BACKUP_DIR/$REMOTE_ARCHIVE_NAME" --project="$PROJECT_ID" --zone="$ZONE"
+gcloud compute scp "${VM_NAME}:$REMOTE_ARCHIVE_PATH" "$VM_BACKUP_DIR/$REMOTE_ARCHIVE_NAME" --project="$PROJECT_ID" --zone="$ZONE"
 
 # Cleanup remote
 echo "🧹 Cleaning up remote files..."
@@ -244,28 +233,28 @@ if [ "$USE_ENCRYPTION" = "true" ]; then
         # Use passphrase from environment
         gpg --batch --yes --passphrase "$BACKUP_PASSPHRASE" \
             --symmetric --cipher-algo AES256 \
-            -o "$BACKUP_DIR/$ENCRYPTED_NAME" \
-            "$BACKUP_DIR/$REMOTE_ARCHIVE_NAME"
+            -o "$VM_BACKUP_DIR/$ENCRYPTED_NAME" \
+            "$VM_BACKUP_DIR/$REMOTE_ARCHIVE_NAME"
     else
         # Prompt for passphrase
         echo "Enter a passphrase for backup encryption (you'll need this to restore):"
         gpg --symmetric --cipher-algo AES256 \
-            -o "$BACKUP_DIR/$ENCRYPTED_NAME" \
-            "$BACKUP_DIR/$REMOTE_ARCHIVE_NAME"
+            -o "$VM_BACKUP_DIR/$ENCRYPTED_NAME" \
+            "$VM_BACKUP_DIR/$REMOTE_ARCHIVE_NAME"
     fi
 
     # Securely delete unencrypted backup
-    if [ -f "$BACKUP_DIR/$ENCRYPTED_NAME" ]; then
+    if [ -f "$VM_BACKUP_DIR/$ENCRYPTED_NAME" ]; then
         echo "🗑️  Removing unencrypted backup..."
-        rm -f "$BACKUP_DIR/$REMOTE_ARCHIVE_NAME"
-        echo "✅ Encrypted backup saved to $BACKUP_DIR/$ENCRYPTED_NAME"
+        rm -f "$VM_BACKUP_DIR/$REMOTE_ARCHIVE_NAME"
+        echo "✅ Encrypted backup saved to $VM_BACKUP_DIR/$ENCRYPTED_NAME"
         echo ""
-        echo "To decrypt: gpg -d $BACKUP_DIR/$ENCRYPTED_NAME | tar xzf -"
+        echo "To decrypt: gpg -d $VM_BACKUP_DIR/$ENCRYPTED_NAME | tar xzf -"
     else
-        echo "❌ Error: Encryption failed. Unencrypted backup retained at $BACKUP_DIR/$REMOTE_ARCHIVE_NAME"
+        echo "❌ Error: Encryption failed. Unencrypted backup retained at $VM_BACKUP_DIR/$REMOTE_ARCHIVE_NAME"
         exit 1
     fi
 else
-    echo "✅ Backup saved to $BACKUP_DIR/$REMOTE_ARCHIVE_NAME"
+    echo "✅ Backup saved to $VM_BACKUP_DIR/$REMOTE_ARCHIVE_NAME"
     echo "⚠️  WARNING: This backup is NOT encrypted and may contain sensitive data."
 fi

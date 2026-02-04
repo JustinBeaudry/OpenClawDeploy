@@ -25,9 +25,10 @@ The workflow: Create GCP VM → Configure SSH → Generate inventory → Run Ans
   - `playbook.yml` - Main Ansible entry point
   - `roles/openclaw/tasks/` - Task files organized by function (system-tools, docker, tailscale, firewall, nodejs, openclaw)
   - `roles/openclaw/defaults/main.yml` - All configurable variables
-- `deployments/<vm-name>/` - Instance-specific config (git-ignored)
-  - `inventory.ini` - Generated Ansible inventory
-  - `vars.yml` - Instance variables (Tailscale keys, install mode, etc.)
+- `inventory/` - Instance-specific config (git-ignored)
+  - `<host-alias>.ini` - Generated Ansible inventory (e.g., `my-bot.us-central1-a.project.ini`)
+  - `<host-alias>.yml` - Instance variables (Tailscale keys, install mode, etc.)
+- `backups/` - Encrypted backup archives (git-ignored)
 
 ### OS Abstraction Pattern
 

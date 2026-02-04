@@ -229,6 +229,14 @@ check_deployment_dir() {
         check_fail "scripts/manage_deployment.sh not found"
     fi
 
+    # Check for inventory directory (optional)
+    if [ -d "inventory" ]; then
+        local inv_count=$(ls -1 inventory/*.ini 2>/dev/null | wc -l)
+        check_pass "inventory/ directory exists ($inv_count instance(s))"
+    else
+        check_info "inventory/ directory not found (will be created on first deployment)"
+    fi
+
     return 0
 }
 

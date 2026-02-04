@@ -239,7 +239,7 @@ Run the prerequisite checker to diagnose issues:
 
 - [QUICKSTART.md](QUICKSTART.md) - 5-minute getting started guide
 - [CLAUDE.md](CLAUDE.md) - Guide for AI assistants working with this codebase
-- [deployment/README.md](deployment/README.md) - Detailed Ansible documentation
+- [ansible/README.md](ansible/README.md) - Detailed Ansible documentation
 
 ## License
 

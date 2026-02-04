@@ -209,18 +209,18 @@ check_deployment_dir() {
     echo "Checking Project Structure..."
     echo "─────────────────────────────"
 
-    if [ -f "deployment/playbook.yml" ]; then
-        check_pass "deployment/playbook.yml found"
+    if [ -f "ansible/playbook.yml" ]; then
+        check_pass "ansible/playbook.yml found"
     else
-        check_fail "deployment/playbook.yml not found"
+        check_fail "ansible/playbook.yml not found"
         check_info "Run this script from the OpenClawDeploy root directory"
         return 1
     fi
 
-    if [ -f "deployment/requirements.yml" ]; then
-        check_pass "deployment/requirements.yml found"
+    if [ -f "ansible/requirements.yml" ]; then
+        check_pass "ansible/requirements.yml found"
     else
-        check_warn "deployment/requirements.yml not found"
+        check_warn "ansible/requirements.yml not found"
     fi
 
     if [ -f "scripts/manage_deployment.sh" ]; then

@@ -5,7 +5,7 @@ This project is an **Infrastructure-as-Code (IaC)** toolset designed to automate
 
 ## Architecture & Structure
 *   **`scripts/manage_deployment.sh`**: The primary entry point. It wraps `gcloud` commands to create VMs and `ansible-playbook` to configure them.
-*   **`deployment/`**: Contains the Ansible playbook and roles.
+*   **`ansible/`**: Contains the Ansible playbook and roles.
     *   `playbook.yml`: Main entry point for Ansible.
     *   `roles/openclaw/`: The primary role handling Docker, Node.js, UFW, and OpenClaw setup.
 *   **`deployments/`**: Stores state and configuration for individual VM instances.

@@ -13,7 +13,7 @@ OpenClaw Deploy is an Infrastructure-as-Code (IaC) toolset that automates provis
 
 ```
 scripts/manage_deployment.sh  →  GCP VM Creation  →  Ansible Playbook
-                                 (gcloud CLI)         (deployment/)
+                                 (gcloud CLI)         (ansible/)
 ```
 
 The workflow: Create GCP VM → Configure SSH → Generate inventory → Run Ansible playbook
@@ -21,7 +21,7 @@ The workflow: Create GCP VM → Configure SSH → Generate inventory → Run Ans
 ### Key Directories
 
 - `scripts/` - CLI entry points (`manage_deployment.sh`, `backup_deployment.sh`, `restore_deployment.sh`)
-- `deployment/` - Ansible playbook and roles
+- `ansible/` - Ansible playbook and roles
   - `playbook.yml` - Main Ansible entry point
   - `roles/openclaw/tasks/` - Task files organized by function (system-tools, docker, tailscale, firewall, nodejs, openclaw)
   - `roles/openclaw/defaults/main.yml` - All configurable variables
@@ -66,7 +66,7 @@ Task files follow an OS-dispatch pattern:
 ./scripts/restore_deployment.sh <vm_name> <backup_file>
 ```
 
-### Linting (run from deployment/ directory)
+### Linting (run from ansible/ directory)
 
 ```bash
 ansible-lint playbook.yml        # Ansible linting
@@ -74,7 +74,7 @@ yamllint .                        # YAML linting
 ansible-playbook playbook.yml --syntax-check  # Syntax validation
 ```
 
-### Manual Ansible Execution (from deployment/)
+### Manual Ansible Execution (from ansible/)
 
 ```bash
 # Install Ansible collections first

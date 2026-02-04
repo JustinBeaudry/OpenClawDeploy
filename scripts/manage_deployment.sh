@@ -441,13 +441,13 @@ run_ansible() {
     fi
 
     # Ensure requirements are installed
-    if [ -f "deployment/requirements.yml" ]; then
+    if [ -f "ansible/requirements.yml" ]; then
         log_msg "📦 Installing Ansible requirements..."
-        ansible-galaxy collection install -r deployment/requirements.yml
+        ansible-galaxy collection install -r ansible/requirements.yml
     fi
 
     log_msg "▶️  Running Playbook..."
-    ansible-playbook -i "$VM_DIR/inventory.ini" deployment/playbook.yml -e "@$VM_DIR/vars.yml"
+    ansible-playbook -i "$VM_DIR/inventory.ini" ansible/playbook.yml -e "@$VM_DIR/vars.yml"
 }
 
 # Main execution

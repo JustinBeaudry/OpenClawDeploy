@@ -275,7 +275,7 @@ print_summary() {
         echo ""
         echo "Next steps:"
         echo "  1. ./scripts/manage_deployment.sh create <vm-name>"
-        echo "  2. Edit deployments/<vm-name>/vars.yml (optional)"
+        echo "  2. Edit inventory/<vm-name>.yml (optional)"
         echo "  3. ./scripts/manage_deployment.sh update <vm-name>"
         return 0
     elif [ $ERRORS -eq 0 ]; then

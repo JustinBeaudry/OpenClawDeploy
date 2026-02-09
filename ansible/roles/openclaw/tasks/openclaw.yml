@@ -82,8 +82,8 @@
     msg: |
       ℹ️  OpenClaw is installed but NOT configured yet.
 
-      Next steps (run as openclaw user):
-      1. Switch user: sudo su - openclaw
+      Next steps (run as {{ openclaw_user }} user):
+      1. Switch user: sudo su - {{ openclaw_user }}
       2. Run onboarding: openclaw onboard --install-daemon
 
       This will:

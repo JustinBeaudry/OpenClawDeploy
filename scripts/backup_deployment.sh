@@ -14,6 +14,7 @@ fi
 
 VM_NAME=""
 NO_ENCRYPT=false
+CLI_ZONE=""
 
 usage() {
     echo "Usage: $0 [OPTIONS] <vm_name>"
@@ -21,8 +22,9 @@ usage() {
     echo "Backs up OpenClaw configurations, sessions, and installed software lists."
     echo ""
     echo "Options:"
-    echo "  --no-encrypt    Skip GPG encryption (NOT RECOMMENDED - backup will contain SSH keys)"
-    echo "  -h, --help      Show this help message"
+    echo "  --zone ZONE         GCP zone (default: $ZONE)"
+    echo "  --no-encrypt        Skip GPG encryption (NOT RECOMMENDED - backup will contain SSH keys)"
+    echo "  -h, --help          Show this help message"
     echo ""
     echo "Environment variables:"
     echo "  ENCRYPT_BACKUP=false    Disable encryption (same as --no-encrypt)"
@@ -31,14 +33,19 @@ usage() {
     echo "Backups are stored in: $BACKUP_DIR/<vm_name>/"
     echo ""
     echo "Examples:"
-    echo "  $0 my-bot                    # Create encrypted backup"
-    echo "  $0 --no-encrypt my-bot       # Create unencrypted backup (not recommended)"
+    echo "  $0 my-bot                            # Create encrypted backup"
+    echo "  $0 --zone us-east5-a my-bot          # Specify zone"
+    echo "  $0 --no-encrypt my-bot               # Create unencrypted backup (not recommended)"
     exit 1
 }
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
     case $1 in
+        --zone)
+            CLI_ZONE="$2"
+            shift 2
+            ;;
         --no-encrypt)
             NO_ENCRYPT=true
             shift
@@ -56,6 +63,9 @@ while [[ $# -gt 0 ]]; do
             ;;
     esac
 done
+
+# Apply CLI overrides
+[ -n "$CLI_ZONE" ] && ZONE="$CLI_ZONE"
 
 if [ -z "$VM_NAME" ]; then
     usage
@@ -196,15 +206,15 @@ EOF
 
 # Copy script to VM
 echo "📤 Uploading backup script..."
-gcloud compute scp "$LOCAL_SCRIPT_NAME" "${VM_NAME}:/tmp/create_backup.sh" --project="$PROJECT_ID" --zone="$ZONE"
+gcloud compute scp "$LOCAL_SCRIPT_NAME" "${VM_NAME}:/tmp/create_backup.sh" --project="$PROJECT_ID" --zone="$ZONE" --tunnel-through-iap
 
 # Execute script
 echo "▶️  Running backup script on VM..."
-gcloud compute ssh "$VM_NAME" --project="$PROJECT_ID" --zone="$ZONE" --command="bash /tmp/create_backup.sh"
+gcloud compute ssh "$VM_NAME" --project="$PROJECT_ID" --zone="$ZONE" --tunnel-through-iap --command="bash /tmp/create_backup.sh"
 
 # Find the archive name that was created (since we generate timestamp remotely now)
 # We grep the output log for the filename
-REMOTE_ARCHIVE_PATH=$(gcloud compute ssh "$VM_NAME" --project="$PROJECT_ID" --zone="$ZONE" --command="ls /tmp/backup_*.tar.gz | head -n 1")
+REMOTE_ARCHIVE_PATH=$(gcloud compute ssh "$VM_NAME" --project="$PROJECT_ID" --zone="$ZONE" --tunnel-through-iap --command="ls /tmp/backup_*.tar.gz | head -n 1")
 REMOTE_ARCHIVE_NAME=$(basename "$REMOTE_ARCHIVE_PATH")
 
 if [ -z "$REMOTE_ARCHIVE_PATH" ]; then
@@ -215,11 +225,11 @@ fi
 
 # Download backup
 echo "📥 Downloading backup $REMOTE_ARCHIVE_NAME..."
-gcloud compute scp "${VM_NAME}:$REMOTE_ARCHIVE_PATH" "$VM_BACKUP_DIR/$REMOTE_ARCHIVE_NAME" --project="$PROJECT_ID" --zone="$ZONE"
+gcloud compute scp "${VM_NAME}:$REMOTE_ARCHIVE_PATH" "$VM_BACKUP_DIR/$REMOTE_ARCHIVE_NAME" --project="$PROJECT_ID" --zone="$ZONE" --tunnel-through-iap
 
 # Cleanup remote
 echo "🧹 Cleaning up remote files..."
-gcloud compute ssh "$VM_NAME" --project="$PROJECT_ID" --zone="$ZONE" --command="rm /tmp/create_backup.sh $REMOTE_ARCHIVE_PATH"
+gcloud compute ssh "$VM_NAME" --project="$PROJECT_ID" --zone="$ZONE" --tunnel-through-iap --command="rm /tmp/create_backup.sh $REMOTE_ARCHIVE_PATH"
 
 # Cleanup local temp script
 rm "$LOCAL_SCRIPT_NAME"

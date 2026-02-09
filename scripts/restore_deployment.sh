@@ -11,21 +11,58 @@ if [ -z "$PROJECT_ID" ]; then
     exit 1
 fi
 
-VM_NAME=$1
-BACKUP_FILE=$2
+VM_NAME=""
+BACKUP_FILE=""
+CLI_ZONE=""
 
 usage() {
-    echo "Usage: $0 <vm_name> <backup_file_path>"
+    echo "Usage: $0 [OPTIONS] <vm_name> <backup_file_path>"
     echo ""
     echo "Restores a deployment from a backup archive."
     echo ""
+    echo "Options:"
+    echo "  --zone ZONE         GCP zone (default: $ZONE)"
+    echo "  -h, --help          Show this help message"
+    echo ""
     echo "Examples:"
     echo "  $0 my-bot backups/my-bot/backup_my-bot_20260130.tar.gz"
-    echo "  $0 my-bot backups/my-bot/backup_my-bot_20260130.tar.gz.gpg"
+    echo "  $0 --zone us-east5-a my-bot backups/my-bot/backup_my-bot_20260130.tar.gz.gpg"
     echo ""
     echo "For encrypted backups (.gpg), you'll be prompted for the passphrase."
     exit 1
 }
+
+# Parse arguments
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --zone)
+            CLI_ZONE="$2"
+            shift 2
+            ;;
+        -h|--help)
+            usage
+            ;;
+        -*)
+            echo "❌ Error: Unknown option $1"
+            usage
+            ;;
+        *)
+            # Positional arguments: VM_NAME then BACKUP_FILE
+            if [ -z "$VM_NAME" ]; then
+                VM_NAME="$1"
+            elif [ -z "$BACKUP_FILE" ]; then
+                BACKUP_FILE="$1"
+            else
+                echo "❌ Error: Too many arguments"
+                usage
+            fi
+            shift
+            ;;
+    esac
+done
+
+# Apply CLI overrides
+[ -n "$CLI_ZONE" ] && ZONE="$CLI_ZONE"
 
 if [ -z "$VM_NAME" ] || [ -z "$BACKUP_FILE" ]; then
     usage
@@ -133,18 +170,18 @@ EOF
 
 # 2. Upload Backup and Script
 echo "📤 Uploading backup archive (this may take time)..."
-gcloud compute scp "$ACTUAL_BACKUP" "${VM_NAME}:${REMOTE_BACKUP_PATH}" --project="$PROJECT_ID" --zone="$ZONE"
+gcloud compute scp "$ACTUAL_BACKUP" "${VM_NAME}:${REMOTE_BACKUP_PATH}" --project="$PROJECT_ID" --zone="$ZONE" --tunnel-through-iap
 
 echo "📤 Uploading restore script..."
-gcloud compute scp "$LOCAL_RESTORE_SCRIPT" "${VM_NAME}:/tmp/restore_script.sh" --project="$PROJECT_ID" --zone="$ZONE"
+gcloud compute scp "$LOCAL_RESTORE_SCRIPT" "${VM_NAME}:/tmp/restore_script.sh" --project="$PROJECT_ID" --zone="$ZONE" --tunnel-through-iap
 
 # 3. Execute Restore
 echo "▶️  Running restore on remote VM..."
-gcloud compute ssh "$VM_NAME" --project="$PROJECT_ID" --zone="$ZONE" --command="bash /tmp/restore_script.sh ${REMOTE_BACKUP_PATH}"
+gcloud compute ssh "$VM_NAME" --project="$PROJECT_ID" --zone="$ZONE" --tunnel-through-iap --command="bash /tmp/restore_script.sh ${REMOTE_BACKUP_PATH}"
 
 # 4. Cleanup Remote
 echo "🧹 Cleaning up remote artifacts..."
-gcloud compute ssh "$VM_NAME" --project="$PROJECT_ID" --zone="$ZONE" --command="rm /tmp/restore_script.sh ${REMOTE_BACKUP_PATH}"
+gcloud compute ssh "$VM_NAME" --project="$PROJECT_ID" --zone="$ZONE" --tunnel-through-iap --command="rm /tmp/restore_script.sh ${REMOTE_BACKUP_PATH}"
 
 # 5. Cleanup Local
 rm "$LOCAL_RESTORE_SCRIPT"

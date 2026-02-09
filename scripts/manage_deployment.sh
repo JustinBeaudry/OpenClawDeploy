@@ -185,12 +185,20 @@ configure_ssh_for_iap() {
         rm -f "$SSH_CONFIG.bak"
     fi
 
+    # Determine OS Login username from active gcloud account
+    local GCLOUD_ACCOUNT
+    GCLOUD_ACCOUNT=$(gcloud config get-value account 2>/dev/null || true)
+    local OS_LOGIN_USER
+    OS_LOGIN_USER=$(echo "$GCLOUD_ACCOUNT" | sed 's/@/_/g; s/\./_/g')
+
     # Append new IAP-based SSH config
     cat >> "$SSH_CONFIG" <<EOF
 
 # OpenClaw VM - IAP Tunnel (auto-generated)
 Host $HOST_ALIAS
     HostName compute.$VM_NAME
+    User $OS_LOGIN_USER
+    IdentityFile ~/.ssh/google_compute_engine
     ProxyCommand gcloud compute start-iap-tunnel $VM_NAME %p --listen-on-stdin --project=$PROJECT_ID --zone=$ZONE
     StrictHostKeyChecking no
     UserKnownHostsFile /dev/null
